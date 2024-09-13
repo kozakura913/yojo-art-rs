@@ -1,0 +1,18 @@
+version: "3"
+services:
+  minio-server:
+    image: quay.io/minio/minio
+    restart: always
+    environment:
+      - MINIO_ROOT_USER=afe1faf0-567f-461a-80f8-4ae682e2c910
+      - MINIO_ROOT_PASSWORD=6a610b06-80ee-4eb4-b0e0-4c696fde76ee
+    command: server /data --console-address ":9001"
+    volumes:
+      - ./minio/:/data
+    ports:
+      - "19520:9000"
+      - "19521:9001"
+    networks:
+      - external_network
+networks:
+  external_network:
