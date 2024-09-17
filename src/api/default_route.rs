@@ -75,6 +75,7 @@ async fn handle_socket(
 			let sender_handle = tokio::spawn(ws_write_side(sender, backend_receiver,ctx.clone(),ping_sync.clone()));
 			let reciever_handle = tokio::spawn(ws_read_side(receiver, sender_handle.abort_handle(),backend_sender, ctx.clone(),ping_sync));
 			let _=reciever_handle.await;
+			println!("exit handle_socket");
 		},
 		Err(e)=>{
 			eprintln!("backend ws error {:?}",e);
@@ -120,7 +121,7 @@ async fn ws_read_side(
 			},
 			// An error occurred while trying to read a message
 			Ok(Some(Err(e))) => {
-				eprintln!("ReadMessageError: {:?}", e);
+				eprintln!("Read from client MessageError: {:?}", e);
 				break;
 			}
 			Ok(None) => {
@@ -128,6 +129,11 @@ async fn ws_read_side(
 			}
 			// Timeout occurred
 			Err(e ) => {
+				let last_send=ping_sync.load(std::sync::atomic::Ordering::Relaxed);
+				let now=chrono::Utc::now().timestamp_millis();
+				if now-60*1000 < last_send{
+					continue;
+				}
 				println!("from client timeout! {:?}", e);
 				break;
 			}
@@ -155,6 +161,8 @@ async fn ws_write_side(
 					if let Err(e)=res{
 						eprintln!("WS send to client error {:?}",e);
 						break;
+					}else{
+						ping_sync.store(chrono::Utc::now().timestamp_millis(), std::sync::atomic::Ordering::Relaxed);
 					}
 				},
 				_=>{
@@ -163,7 +171,7 @@ async fn ws_write_side(
 			},
 			// An error occurred while trying to read a message
 			Ok(Some(Err(e))) => {
-				eprintln!("ReadMessageError: {:?}", e);
+				eprintln!("Read from backend MessageError: {:?}", e);
 				break;
 			}
 			Ok(None) => {
@@ -181,6 +189,7 @@ async fn ws_write_side(
 			}
 		}
 	}
+	println!("exit ws_write_side");
 }
 pub async fn get(
 	ctx:Context,
