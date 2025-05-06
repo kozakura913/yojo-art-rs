@@ -4,7 +4,7 @@ use axum::Router;
 
 use crate::Context;
 
-use super::{default_route, drive};
+use super::{default_route, drive, notes};
 
 macro_rules! endpoint {
 	($app:ident,$i:path ) => {{
@@ -24,6 +24,7 @@ pub fn route<S>(ctx: &Context) -> Router<S> {
 	let r = endpoint!(r, drive::files::multipart::partial_upload::post);
 	let r = endpoint!(r, drive::files::multipart::finish_upload::post);
 	let r = endpoint!(r, drive::files::multipart::abort::post);
+	let r = endpoint!(r, notes::timeline::post);
 
 	let r = r.route("/streaming", axum::routing::get(default_route::streaming));
 	let r = r.route("/*path", axum::routing::post(default_route::post));

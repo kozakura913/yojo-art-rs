@@ -96,16 +96,17 @@ impl DBConfig {
 pub struct Context {
 	bucket: Box<Bucket>,
 	config: Arc<ConfigFile>,
-	misskey_config: Arc<MisskeyConfig>,
-	redis: MultiplexedConnection,
+	pub misskey_config: Arc<MisskeyConfig>,
+	pub redis: MultiplexedConnection,
 	client: reqwest::Client,
-	token_service: TokenService,
-	role_service: RoleService,
-	drive_service: DriveService,
-	event_service: EventService,
-	raw_db: DataBase,
-	file_service: FileMetaService,
-	user_service: UserService,
+	pub token_service: TokenService,
+	pub role_service: RoleService,
+	pub drive_service: DriveService,
+	pub event_service: EventService,
+	pub raw_db: DataBase,
+	pub file_service: FileMetaService,
+	pub user_service: UserService,
+	pub meta_service: MetaService,
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 enum FilterType {
@@ -264,7 +265,7 @@ fn main() {
 		let drive_service = DriveService::new(
 			misskey_config.clone(),
 			db.clone(),
-			meta_service,
+			meta_service.clone(),
 			role_service.clone(),
 			id_service,
 			user_service.clone(),
@@ -283,6 +284,7 @@ fn main() {
 			file_service,
 			raw_db: db,
 			user_service,
+			meta_service,
 			misskey_config,
 		};
 		let http_addr: SocketAddr = arg_tup.config.bind_addr.parse().unwrap();
