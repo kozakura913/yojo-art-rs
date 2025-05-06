@@ -1,6 +1,7 @@
 pub mod announcement;
 pub mod drive;
 pub mod event;
+pub mod fanout_timeline;
 pub mod file_meta;
 pub mod id_service;
 pub mod meta;

@@ -23,10 +23,16 @@ impl MetaService {
 			cache: Arc::new(RwLock::new(None)),
 		}
 	}
+	/**
+	 * キャッシュからしか取得しない。通常はload(true)を使うこと
+	 */
 	pub async fn fetch(&self) -> Option<Arc<MiMeta>> {
 		let rl = self.cache.read().await;
 		rl.clone()
 	}
+	/**
+	 * allow_cache=false指定でキャッシュを更新する
+	 */
 	pub async fn load(&self, allow_cache: bool) -> Option<Arc<MiMeta>> {
 		if allow_cache {
 			if let Some(v) = self.fetch().await {

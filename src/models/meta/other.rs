@@ -55,6 +55,10 @@ pub struct MiMetaOther {
 	pub set_sensitive_flag_automatically: bool,
 	#[diesel(column_name = "enableChartsForFederatedInstances")]
 	pub enable_charts_for_federated_instances: bool,
+	#[diesel(column_name = "enableFanoutTimeline")]
+	pub enable_fanout_timeline: bool,
+	#[diesel(column_name = "enableFanoutTimelineDbFallback")]
+	pub enable_fanout_timeline_db_fallback: bool,
 }
 
 #[derive(

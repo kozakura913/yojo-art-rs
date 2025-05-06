@@ -19,6 +19,22 @@ mod browsersafe;
 mod models;
 mod service;
 
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ServerError(String);
+impl IntoResponse for ServerError {
+	fn into_response(self) -> axum::response::Response {
+		(StatusCode::INTERNAL_SERVER_ERROR, self.0).into_response()
+	}
+}
+impl<T> From<T> for ServerError
+where
+	T: std::fmt::Debug,
+{
+	fn from(value: T) -> Self {
+		Self(format!("{:?}", value))
+	}
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ConfigFile {
 	bind_addr: String,
@@ -51,6 +67,8 @@ pub struct MisskeyConfig {
 	redis: RedisConfig,
 	#[serde(rename = "redisForPubsub")]
 	redis_for_pubsub: Option<RedisConfig>,
+	#[serde(rename = "redisForTimelines")]
+	redis_for_timelines: Option<RedisConfig>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct S3Config {
@@ -97,7 +115,9 @@ pub struct Context {
 	bucket: Box<Bucket>,
 	config: Arc<ConfigFile>,
 	pub misskey_config: Arc<MisskeyConfig>,
+	pub host: String,
 	pub redis: MultiplexedConnection,
+	pub redis_for_timelines: MultiplexedConnection,
 	client: reqwest::Client,
 	pub token_service: TokenService,
 	pub role_service: RoleService,
@@ -228,6 +248,10 @@ fn main() {
 		.redis_for_pubsub
 		.as_ref()
 		.map(|redis_for_pubsub| redis::Client::open(redis_for_pubsub.to_url()).unwrap());
+	let redis_for_timelines = misskey_config
+		.redis_for_timelines
+		.as_ref()
+		.map(|redis_for_timelines| redis::Client::open(redis_for_timelines.to_url()).unwrap());
 	let rt = tokio::runtime::Builder::new_multi_thread()
 		.enable_all()
 		.build()
@@ -245,6 +269,14 @@ fn main() {
 				.ok(),
 			None => None,
 		};
+		let redis_for_timelines = match redis_for_timelines {
+			Some(redis_for_timelines) => redis_for_timelines
+				.get_multiplexed_tokio_connection()
+				.await
+				.ok(),
+			None => None,
+		}
+		.unwrap_or(redis.clone());
 		let db = DataBase::open(&misskey_config.db.to_url()).await.unwrap();
 		let id_service = IdService::new(&misskey_config);
 		let token_service = TokenService::new(db.clone(), id_service.clone());
@@ -272,6 +304,9 @@ fn main() {
 			event_service.clone(),
 		);
 		let client = reqwest::Client::new();
+
+		let url = reqwest::Url::parse(misskey_config.url.as_str()).expect("url parse");
+		let host = url.host().expect("bad server url config").to_string();
 		let arg_tup = Context {
 			bucket,
 			config,
@@ -286,6 +321,8 @@ fn main() {
 			user_service,
 			meta_service,
 			misskey_config,
+			redis_for_timelines,
+			host,
 		};
 		let http_addr: SocketAddr = arg_tup.config.bind_addr.parse().unwrap();
 		let app = api::endpoints::route(&arg_tup);

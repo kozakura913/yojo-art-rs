@@ -8,6 +8,7 @@ pub mod follow_request;
 pub mod following;
 pub mod meta;
 pub mod muting;
+pub mod note;
 pub mod renote_muting;
 pub mod role;
 pub mod user;
