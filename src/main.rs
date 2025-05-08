@@ -11,8 +11,8 @@ use s3::Bucket;
 use serde::{Deserialize, Serialize};
 use service::{
 	announcement::AnnouncementService, drive::DriveService, event::EventService,
-	file_meta::FileMetaService, id_service::IdService, meta::MetaService, role::RoleService,
-	token_service::TokenService, user::UserService,
+	fanout_timeline::FanoutTimelineService, file_meta::FileMetaService, id_service::IdService,
+	meta::MetaService, role::RoleService, token_service::TokenService, user::UserService,
 };
 mod api;
 mod browsersafe;
@@ -117,7 +117,6 @@ pub struct Context {
 	pub misskey_config: Arc<MisskeyConfig>,
 	pub host: String,
 	pub redis: MultiplexedConnection,
-	pub redis_for_timelines: MultiplexedConnection,
 	client: reqwest::Client,
 	pub token_service: TokenService,
 	pub role_service: RoleService,
@@ -127,6 +126,7 @@ pub struct Context {
 	pub file_service: FileMetaService,
 	pub user_service: UserService,
 	pub meta_service: MetaService,
+	pub fanout_timeline_service: FanoutTimelineService,
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 enum FilterType {
@@ -299,14 +299,25 @@ fn main() {
 			db.clone(),
 			meta_service.clone(),
 			role_service.clone(),
-			id_service,
+			id_service.clone(),
 			user_service.clone(),
 			event_service.clone(),
 		);
-		let client = reqwest::Client::new();
-
 		let url = reqwest::Url::parse(misskey_config.url.as_str()).expect("url parse");
 		let host = url.host().expect("bad server url config").to_string();
+		let fanout_timeline_service = FanoutTimelineService::new(
+			misskey_config.clone(),
+			db.clone(),
+			meta_service.clone(),
+			role_service.clone(),
+			id_service,
+			user_service.clone(),
+			event_service.clone(),
+			redis_for_timelines,
+			host.clone(),
+		);
+		let client = reqwest::Client::new();
+
 		let arg_tup = Context {
 			bucket,
 			config,
@@ -321,7 +332,7 @@ fn main() {
 			user_service,
 			meta_service,
 			misskey_config,
-			redis_for_timelines,
+			fanout_timeline_service,
 			host,
 		};
 		let http_addr: SocketAddr = arg_tup.config.bind_addr.parse().unwrap();

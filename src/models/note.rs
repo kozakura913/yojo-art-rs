@@ -4,7 +4,7 @@ use diesel::{
 	deserialize::FromSql,
 	expression::AsExpression,
 	serialize::{IsNull, ToSql},
-	sql_types::{Jsonb, VarChar},
+	sql_types::{Jsonb, Nullable, VarChar},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -41,6 +41,9 @@ diesel::table! {
 		visibleUserIds -> Array<VarChar>,
 		mentions -> Array<VarChar>,
 		mentionedRemoteUsers -> Text,
+		emojis -> Array<VarChar>,
+		tags -> Array<VarChar>,
+		hasPoll -> Bool,
 	}
 }
 #[derive(
@@ -85,9 +88,9 @@ pub struct MiNote {
 	#[diesel(column_name = "searchableBy")]
 	pub searchable_by: SearchableTypes,
 	/** The URI of a note. it will be null when the note is local. */
-	pub uri:Option<String>,
+	pub uri: Option<String>,
 	/** The human readable url of a note. it will be null when the note is local. */
-	pub url:Option<String>,
+	pub url: Option<String>,
 	#[diesel(column_name = "fileIds")]
 	pub file_ids: Vec<String>,
 	#[diesel(column_name = "attachedFileTypes")]
@@ -96,7 +99,11 @@ pub struct MiNote {
 	pub visible_user_ids: Vec<String>,
 	pub mentions: Vec<String>,
 	#[diesel(column_name = "mentionedRemoteUsers")]
-	pub mentioned_remote_users:String,
+	pub mentioned_remote_users: String,
+	pub emojis: Vec<String>,
+	pub tags: Vec<String>,
+	#[diesel(column_name = "hasPoll")]
+	pub has_poll: bool,
 }
 #[derive(Copy, Clone, EnumString, Display, Default, Debug, FromSqlRow, AsExpression)]
 #[diesel(sql_type = Nullable<VarChar>)]
@@ -113,7 +120,7 @@ pub enum NoteReactionAcceptances {
 	#[default]
 	None,
 }
-impl ToSql<diesel::sql_types::Nullable<VarChar>, diesel::pg::Pg> for NoteReactionAcceptances
+impl ToSql<Nullable<VarChar>, diesel::pg::Pg> for NoteReactionAcceptances
 where
 	String: ToSql<VarChar, diesel::pg::Pg>,
 {
@@ -127,13 +134,12 @@ where
 		<String as ToSql<VarChar, diesel::pg::Pg>>::to_sql(&self.to_string(), &mut out.reborrow())
 	}
 }
-impl<DB: diesel::backend::Backend> FromSql<diesel::sql_types::Nullable<VarChar>, DB> for NoteReactionAcceptances
+impl<DB: diesel::backend::Backend> FromSql<Nullable<VarChar>, DB> for NoteReactionAcceptances
 where
 	String: FromSql<VarChar, DB>,
 {
 	fn from_sql(bytes: DB::RawValue<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-		let v =
-			<Option<String> as FromSql<diesel::sql_types::Nullable<VarChar>, DB>>::from_sql(bytes)?;
+		let v = <Option<String> as FromSql<Nullable<VarChar>, DB>>::from_sql(bytes)?;
 		if let Some(v) = v {
 			use std::str::FromStr;
 			Self::from_str(&v).or_else(|_| Ok(Self::None))
@@ -202,12 +208,11 @@ where
 	String: FromSql<VarChar, DB>,
 {
 	fn from_sql(bytes: DB::RawValue<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-		let v =<String as FromSql<VarChar, DB>>::from_sql(bytes)?;
+		let v = <String as FromSql<VarChar, DB>>::from_sql(bytes)?;
 		use std::str::FromStr;
 		Self::from_str(&v).or_else(|_| Ok(Self::Home))
 	}
 }
-
 
 #[derive(Copy, Clone, EnumString, Display, Default, Debug, FromSqlRow, AsExpression)]
 #[diesel(sql_type = Nullable<VarChar>)]
@@ -226,7 +231,7 @@ pub enum SearchableTypes {
 	/** ユーザーのsearchableByを見る */
 	None,
 }
-impl ToSql<diesel::sql_types::Nullable<VarChar>, diesel::pg::Pg> for SearchableTypes
+impl ToSql<Nullable<VarChar>, diesel::pg::Pg> for SearchableTypes
 where
 	String: ToSql<VarChar, diesel::pg::Pg>,
 {
@@ -240,13 +245,14 @@ where
 		<String as ToSql<VarChar, diesel::pg::Pg>>::to_sql(&self.to_string(), &mut out.reborrow())
 	}
 }
-impl<DB: diesel::backend::Backend> FromSql<diesel::sql_types::Nullable<VarChar>, DB> for SearchableTypes
+impl<DB: diesel::backend::Backend> FromSql<Nullable<VarChar>, DB>
+	for SearchableTypes
 where
 	String: FromSql<VarChar, DB>,
 {
 	fn from_sql(bytes: DB::RawValue<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
 		let v =
-			<Option<String> as FromSql<diesel::sql_types::Nullable<VarChar>, DB>>::from_sql(bytes)?;
+			<Option<String> as FromSql<Nullable<VarChar>, DB>>::from_sql(bytes)?;
 		if let Some(v) = v {
 			use std::str::FromStr;
 			Self::from_str(&v).or_else(|_| Ok(Self::None))
@@ -260,22 +266,6 @@ where
 		length: 1024, array: true, default: '{}',
 	})
 	public reactionAndUserPairCache: string[];
-
-	@Column('varchar', {
-		length: 128, array: true, default: '{}',
-	})
-	public emojis: string[];
-
-	@Index('IDX_NOTE_TAGS', { synchronize: false })
-	@Column('varchar', {
-		length: 128, array: true, default: '{}',
-	})
-	public tags: string[];
-
-	@Column('boolean', {
-		default: false,
-	})
-	public hasPoll: boolean;
 
 	@Index()
 	@Column({
