@@ -21,10 +21,10 @@ diesel::table! {
 		renoteId -> Nullable<VarChar>,
 		threadId -> Nullable<VarChar>,
 		hasEvent -> Bool,
-		text -> Text,
+		text -> Nullable<Text>,
 		name -> Nullable<VarChar>,
 		cw -> Nullable<VarChar>,
-		userId -> Nullable<VarChar>,
+		userId -> VarChar,
 		localOnly -> Bool,
 		reactionAcceptance -> Nullable<VarChar>,
 		disableRightClick -> Bool,
@@ -66,15 +66,15 @@ pub struct MiNote {
 	pub thread_id: Option<String>,
 	#[diesel(column_name = "hasEvent")]
 	pub has_event: bool,
-	pub text: String,
+	pub text: Option<String>,
 	pub name: Option<String>,
 	pub cw: Option<String>,
 	#[diesel(column_name = "userId")]
-	pub user_id: Option<String>,
+	pub user_id: String,
 	#[diesel(column_name = "localOnly")]
 	pub local_only: bool,
 	#[diesel(column_name = "reactionAcceptance")]
-	pub reaction_acceptance: NoteReactionAcceptances,
+	pub reaction_acceptance: Option<NoteReactionAcceptances>,
 	#[diesel(column_name = "disableRightClick")]
 	pub disable_right_click: bool,
 	#[diesel(column_name = "renoteCount")]
@@ -86,7 +86,8 @@ pub struct MiNote {
 	pub reactions: MiReactions,
 	pub visibility: NoteVisibilities,
 	#[diesel(column_name = "searchableBy")]
-	pub searchable_by: SearchableTypes,
+	/** NoneでユーザーのsearchableByを見る */
+	pub searchable_by: Option<SearchableTypes>,
 	/** The URI of a note. it will be null when the note is local. */
 	pub uri: Option<String>,
 	/** The human readable url of a note. it will be null when the note is local. */
@@ -105,8 +106,8 @@ pub struct MiNote {
 	#[diesel(column_name = "hasPoll")]
 	pub has_poll: bool,
 }
-#[derive(Copy, Clone, EnumString, Display, Default, Debug, FromSqlRow, AsExpression)]
-#[diesel(sql_type = Nullable<VarChar>)]
+#[derive(Copy, Clone, EnumString, Display, Debug, FromSqlRow, AsExpression)]
+#[diesel(sql_type = VarChar)]
 pub enum NoteReactionAcceptances {
 	#[strum(serialize = "likeOnly")]
 	LikeOnly,
@@ -116,11 +117,8 @@ pub enum NoteReactionAcceptances {
 	NonSensitiveOnly,
 	#[strum(serialize = "nonSensitiveOnlyForLocalLikeOnlyForRemote")]
 	NonSensitiveOnlyForLocalLikeOnlyForRemote,
-	#[strum(serialize = "")]
-	#[default]
-	None,
 }
-impl ToSql<Nullable<VarChar>, diesel::pg::Pg> for NoteReactionAcceptances
+impl ToSql<VarChar, diesel::pg::Pg> for NoteReactionAcceptances
 where
 	String: ToSql<VarChar, diesel::pg::Pg>,
 {
@@ -128,30 +126,23 @@ where
 		&'b self,
 		out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>,
 	) -> diesel::serialize::Result {
-		if let Self::None = &self {
-			return diesel::serialize::Result::Ok(IsNull::Yes);
-		}
 		<String as ToSql<VarChar, diesel::pg::Pg>>::to_sql(&self.to_string(), &mut out.reborrow())
 	}
 }
-impl<DB: diesel::backend::Backend> FromSql<Nullable<VarChar>, DB> for NoteReactionAcceptances
+impl<DB: diesel::backend::Backend> FromSql<VarChar, DB> for NoteReactionAcceptances
 where
 	String: FromSql<VarChar, DB>,
 {
 	fn from_sql(bytes: DB::RawValue<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-		let v = <Option<String> as FromSql<Nullable<VarChar>, DB>>::from_sql(bytes)?;
-		if let Some(v) = v {
-			use std::str::FromStr;
-			Self::from_str(&v).or_else(|_| Ok(Self::None))
-		} else {
-			Ok(Self::None)
-		}
+		let v = <String as FromSql<VarChar, DB>>::from_sql(bytes)?;
+		use std::str::FromStr;
+		Ok(Self::from_str(&v).or_else(|e| Err(Box::new(e)))?)
 	}
 }
 
 #[derive(Clone, Default, Debug, Serialize, Deserialize, FromSqlRow, AsExpression)]
 #[diesel(sql_type = Jsonb)]
-pub struct MiReactions(pub HashMap<String, String>);
+pub struct MiReactions(pub HashMap<String, i32>);
 impl ToSql<Jsonb, diesel::pg::Pg> for MiReactions
 where
 	serde_json::Value: ToSql<Jsonb, diesel::pg::Pg>,
@@ -210,12 +201,12 @@ where
 	fn from_sql(bytes: DB::RawValue<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
 		let v = <String as FromSql<VarChar, DB>>::from_sql(bytes)?;
 		use std::str::FromStr;
-		Self::from_str(&v).or_else(|_| Ok(Self::Home))
+		Ok(Self::from_str(&v).or_else(|e| Err(Box::new(e)))?)
 	}
 }
 
-#[derive(Copy, Clone, EnumString, Display, Default, Debug, FromSqlRow, AsExpression)]
-#[diesel(sql_type = Nullable<VarChar>)]
+#[derive(Copy, Clone, EnumString, Display, Debug, FromSqlRow, AsExpression)]
+#[diesel(sql_type = VarChar)]
 pub enum SearchableTypes {
 	#[strum(serialize = "public")]
 	/** だれでも */
@@ -226,12 +217,8 @@ pub enum SearchableTypes {
 	#[strum(serialize = "reacted")]
 	/** 返信かリアクションしたユーザーのみ */
 	Reacted,
-	#[strum(serialize = "")]
-	#[default]
-	/** ユーザーのsearchableByを見る */
-	None,
 }
-impl ToSql<Nullable<VarChar>, diesel::pg::Pg> for SearchableTypes
+impl ToSql<VarChar, diesel::pg::Pg> for SearchableTypes
 where
 	String: ToSql<VarChar, diesel::pg::Pg>,
 {
@@ -239,26 +226,17 @@ where
 		&'b self,
 		out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>,
 	) -> diesel::serialize::Result {
-		if let Self::None = &self {
-			return diesel::serialize::Result::Ok(IsNull::Yes);
-		}
 		<String as ToSql<VarChar, diesel::pg::Pg>>::to_sql(&self.to_string(), &mut out.reborrow())
 	}
 }
-impl<DB: diesel::backend::Backend> FromSql<Nullable<VarChar>, DB>
-	for SearchableTypes
+impl<DB: diesel::backend::Backend> FromSql<VarChar, DB> for SearchableTypes
 where
 	String: FromSql<VarChar, DB>,
 {
 	fn from_sql(bytes: DB::RawValue<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-		let v =
-			<Option<String> as FromSql<Nullable<VarChar>, DB>>::from_sql(bytes)?;
-		if let Some(v) = v {
-			use std::str::FromStr;
-			Self::from_str(&v).or_else(|_| Ok(Self::None))
-		} else {
-			Ok(Self::None)
-		}
+		let v = <String as FromSql<VarChar, DB>>::from_sql(bytes)?;
+		use std::str::FromStr;
+		Ok(Self::from_str(&v).or_else(|e| Err(Box::new(e)))?)
 	}
 }
 /*

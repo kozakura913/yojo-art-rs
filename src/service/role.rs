@@ -270,7 +270,7 @@ pub struct RolePolicies {
 	pub user_each_user_lists_limit: Option<i64>,
 	#[serde(rename = "rateLimitFactor")]
 	pub rate_limit_factor: Option<f64>,
-	#[serde(rename = "noteEachClipsLimit")]
+	#[serde(rename = "avatarDecorationLimit")]
 	pub avatar_decoration_limit: Option<i32>,
 	#[serde(rename = "fileSizeLimit")]
 	pub file_size_limit: Option<i64>,
