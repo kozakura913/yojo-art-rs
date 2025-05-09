@@ -58,6 +58,25 @@ impl FanoutTimelineService {
 			)
 			.await?;
 		println!("{:?}", tl);
-		Ok(vec![])
+		use diesel::ExpressionMethods;
+		use diesel::{QueryDsl, SelectableHelper};
+		use diesel_async::RunQueryDsl;
+		use tokio::sync::RwLock;
+
+		use crate::{DataBase, models::note::MiNote};
+
+		let mut con = self.db.get().await.ok_or("db error")?;
+		let notes: Vec<MiNote> = {
+			use crate::models::note::note::dsl::note;
+			use crate::models::note::note::dsl::*;
+			note.filter(id.eq_any(&tl))
+				.select(MiNote::as_select())
+				.load(&mut con)
+				.await
+				.map_err(|e| {
+					eprintln!("{:?}", e);
+				})
+		}?;
+		Ok(notes)
 	}
 }
