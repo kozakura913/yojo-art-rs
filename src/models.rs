@@ -2,6 +2,7 @@ pub mod access_token;
 pub mod announcement;
 pub mod announcement_read;
 pub mod blocking;
+pub mod common;
 pub mod drive_file;
 pub mod drive_folder;
 pub mod follow_request;

@@ -70,7 +70,7 @@ impl FanoutTimelineService {
 			.get_notes(&FanoutTimelineName::Home(user_id))
 			.await?
 			.into_iter()
-			.map(|note| self.note_service.pack(note));
+			.map(|note| self.note_service.pack_detail(note, user_id));
 		//Ok(futures::prelude::future::join_all(iter).await)
 		let mut notes = vec![];
 		for job in iter {

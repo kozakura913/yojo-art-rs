@@ -25,6 +25,7 @@ pub async fn post(
 	if meta.other.enable_fanout_timeline {
 		let notes = ctx.fanout_timeline_service.home_tl(user_id).await?;
 		println!("FTT {:?}", notes);
+		return Ok((StatusCode::OK, serde_json::to_string(&notes)?).into_response());
 	}
 	//TODO 良い感じ
 	Ok((StatusCode::OK, "[]".to_owned()).into_response())

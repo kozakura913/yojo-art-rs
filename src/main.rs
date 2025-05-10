@@ -217,8 +217,11 @@ fn main() {
 			.write_all(default_config.as_bytes())
 			.unwrap();
 	}
-	let misskey_config: MisskeyConfig =
+	let mut misskey_config: MisskeyConfig =
 		serde_yaml::from_reader(std::fs::File::open(&".config/default.yml").unwrap()).unwrap();
+	let url = reqwest::Url::parse(misskey_config.url.as_str()).expect("url parse");
+	misskey_config.url = url.to_string();
+	let host = url.host().expect("bad server url config").to_string();
 	let misskey_config = Arc::new(misskey_config);
 	let file_service = FileMetaService::new();
 	let config: ConfigFile =
@@ -292,6 +295,7 @@ fn main() {
 			id_service.clone(),
 			role_service.clone(),
 			announcement_service,
+			meta_service.clone(),
 		);
 		let event_service = EventService::new(
 			redis_for_pubsub.clone().unwrap_or(redis.clone()),
@@ -306,13 +310,12 @@ fn main() {
 			user_service.clone(),
 			event_service.clone(),
 		);
-		let url = reqwest::Url::parse(misskey_config.url.as_str()).expect("url parse");
-		let host = url.host().expect("bad server url config").to_string();
 		let note_service = NoteService::new(
 			misskey_config.clone(),
 			db.clone(),
 			meta_service.clone(),
 			role_service.clone(),
+			drive_service.clone(),
 			id_service.clone(),
 			user_service.clone(),
 			event_service.clone(),

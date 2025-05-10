@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use chrono::Utc;
 use redis::{AsyncCommands, aio::MultiplexedConnection};
 use serde::{Deserialize, Serialize};
 
@@ -11,8 +12,12 @@ use crate::{
 	},
 };
 
-use super::{announcement::AnnouncementService, id_service::IdService, role::RoleService};
+use super::{
+	announcement::AnnouncementService, id_service::IdService, meta::MetaService, role::RoleService,
+};
 
+pub const USER_ONLINE_THRESHOLD: i64 = 1000 * 60 * 10; // 10min
+pub const USER_ACTIVE_THRESHOLD: i64 = 1000 * 60 * 60 * 24 * 3; // 3days
 #[derive(Clone, Debug)]
 pub struct UserService {
 	config: Arc<MisskeyConfig>,
@@ -21,6 +26,7 @@ pub struct UserService {
 	id_service: IdService,
 	role_service: RoleService,
 	announcement_service: AnnouncementService,
+	meta_service: MetaService,
 }
 #[derive(Default, PartialEq, Eq, Debug)]
 pub enum UserPackSchema {
@@ -65,6 +71,7 @@ impl UserService {
 		id_service: IdService,
 		role_service: RoleService,
 		announcement_service: AnnouncementService,
+		meta_service: MetaService,
 	) -> Self {
 		Self {
 			config,
@@ -73,6 +80,7 @@ impl UserService {
 			id_service,
 			role_service,
 			announcement_service,
+			meta_service,
 		}
 	}
 	pub async fn pack(
@@ -388,64 +396,109 @@ impl UserService {
 	}
 	pub fn identicon_url(&self, user: &MiUser) -> String {
 		format!(
-			"{}/identicon/{}@{}",
+			"{}identicon/{}@{}",
 			self.config.url,
 			user.username.to_lowercase(),
 			user.host.as_ref().map(|s| s.as_str()).unwrap_or(".")
 		)
 	}
 	pub async fn pack_lite(&self, user: MiUser) -> Result<PackedUserLite, ServerError> {
+		let online_status = self.online_status(&user);
 		let avatar_url = if user.avatar_url.is_none() {
 			self.identicon_url(&user)
 		} else {
 			user.avatar_url.unwrap()
 		};
+		println!("avatar_decorations={:?}", user.avatar_decorations);
+		let meta = self.meta_service.load(false).await.ok_or("meta")?;
 		Ok(PackedUserLite {
-			id: user.id,
 			name: user.name,
 			username: user.username,
 			host: user.host,
-			avatarUrl: avatar_url,
-			avatarBlurhash: todo!(),
-			avatarDecorations: todo!(),
-			isLocked: todo!(),
-			isBot: todo!(),
-			isCat: todo!(),
-			isProxy: todo!(),
-			requireSigninToViewContents: todo!(),
-			makeNotesFollowersOnlyBefore: todo!(),
-			makeNotesHiddenBefore: todo!(),
-			instance: todo!(),
-			emojis: todo!(),
-			onlineStatus: todo!(),
-			setFederationAvatarShape: todo!(),
-			isSquareAvatars: todo!(),
+			avatar_url,
+			avatar_blurhash: user.avatar_blurhash,
+			avatar_decorations: vec![], //TODO 後で
+			is_locked: user.is_locked,
+			is_bot: user.is_bot,
+			is_cat: user.is_cat,
+			is_proxy: meta.other.proxy_account_id.as_ref() == Some(&user.id),
+			require_signin_to_view_contents: user.requireSigninToViewContents,
+			make_notes_followers_only_before: user.make_notes_followers_only_before,
+			make_notes_hidden_before: user.make_notes_hidden_before,
+			instance: None,         //TODO 後で
+			emojis: HashMap::new(), //TODO 後で
+			online_status,
+			set_federation_avatar_shape: user.set_federation_avatar_shape,
+			is_square_avatars: user.is_square_avatars,
+			id: user.id,
 		})
 	}
+	pub fn online_status(&self, user: &MiUser) -> OnlineStatus {
+		if user.hide_online_status {
+			OnlineStatus::unknown
+		} else if let Some(last_active_date) = user.last_active_date {
+			let elapsed = (Utc::now() - last_active_date.and_utc()).num_milliseconds();
+			if elapsed < USER_ONLINE_THRESHOLD {
+				OnlineStatus::online
+			} else if elapsed < USER_ACTIVE_THRESHOLD {
+				OnlineStatus::active
+			} else {
+				OnlineStatus::offline
+			}
+		} else {
+			OnlineStatus::unknown
+		}
+	}
 }
-pub trait PackedUser: serde::ser::Serialize + serde::de::Deserialize<'static> {}
+pub trait PackedUser:
+	Clone + std::fmt::Debug + serde::ser::Serialize + serde::de::Deserialize<'static>
+{
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PackedUserLite {
-	id: String,
-	name: Option<String>,
-	username: String,
-	host: Option<String>,
-	avatarUrl: String,
-	avatarBlurhash: Option<String>,
-	avatarDecorations: Vec<PackedAvatarDecoration>,
-	isLocked: bool,
-	isBot: bool,
-	isCat: bool,
-	isProxy: bool,
-	requireSigninToViewContents: bool,
-	makeNotesFollowersOnlyBefore: i64,
-	makeNotesHiddenBefore: i64,
-	instance: Option<PackedInstance>,
-	emojis: HashMap<String, String>, //K=emoji:V=url
-	onlineStatus: String,            // "unknown" | "online" | "active" | "offline"
+	pub id: String,
+	pub name: Option<String>,
+	pub username: String,
+	pub host: Option<String>,
+	#[serde(rename = "avatarUrl")]
+	pub avatar_url: String,
+	#[serde(rename = "avatarBlurhash")]
+	pub avatar_blurhash: Option<String>,
+	#[serde(rename = "avatarDecorations")]
+	pub avatar_decorations: Vec<PackedAvatarDecoration>,
+	#[serde(rename = "isLocked")]
+	pub is_locked: bool,
+	#[serde(rename = "isBot")]
+	pub is_bot: bool,
+	#[serde(rename = "isCat")]
+	pub is_cat: bool,
+	#[serde(rename = "isProxy")]
+	pub is_proxy: bool,
+	#[serde(rename = "requireSigninToViewContents")]
+	pub require_signin_to_view_contents: bool,
+	#[serde(rename = "makeNotesFollowersOnlyBefore")]
+	pub make_notes_followers_only_before: Option<i32>,
+	#[serde(rename = "makeNotesHiddenBefore")]
+	pub make_notes_hidden_before: Option<i32>,
+	pub instance: Option<PackedInstance>,
+	pub emojis: HashMap<String, String>, //K=emoji:V=url
+	pub online_status: OnlineStatus,
 	//badgeRoles:Option<>,
-	setFederationAvatarShape: bool,
-	isSquareAvatars: bool,
+	#[serde(rename = "setFederationAvatarShape")]
+	pub set_federation_avatar_shape: Option<bool>,
+	#[serde(rename = "isSquareAvatars")]
+	pub is_square_avatars: Option<bool>,
+}
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OnlineStatus {
+	#[serde(rename = "unknown")]
+	unknown,
+	#[serde(rename = "online")]
+	online,
+	#[serde(rename = "active")]
+	active,
+	#[serde(rename = "offline")]
+	offline,
 }
 impl PackedUser for PackedUserLite {}
 #[derive(Clone, Debug, Serialize, Deserialize)]

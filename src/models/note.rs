@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use strum_macros::{Display, EnumString};
 
+use super::common::SearchableTypes;
+
 diesel::table! {
 	#[sql_name = "note"]
 	note (id) {
@@ -85,7 +87,7 @@ pub struct MiNote {
 	#[diesel(column_name = "clippedCount")]
 	pub clipped_count: i16,
 	pub reactions: MiReactions,
-	pub visibility: NoteVisibilities,
+	pub visibility: NoteVisibility,
 	#[diesel(column_name = "searchableBy")]
 	/** NoneでユーザーのsearchableByを見る */
 	pub searchable_by: Option<SearchableTypes>,
@@ -109,16 +111,22 @@ pub struct MiNote {
 	#[diesel(column_name = "reactionAndUserPairCache")]
 	pub reaction_and_user_pair_cache: Vec<String>,
 }
-#[derive(Copy, Clone, EnumString, Display, Debug, FromSqlRow, AsExpression)]
+#[derive(
+	Copy, Clone, EnumString, Display, Debug, FromSqlRow, AsExpression, Serialize, Deserialize,
+)]
 #[diesel(sql_type = VarChar)]
 pub enum NoteReactionAcceptances {
 	#[strum(serialize = "likeOnly")]
+	#[serde(rename = "likeOnly")]
 	LikeOnly,
 	#[strum(serialize = "likeOnlyForRemote")]
+	#[serde(rename = "likeOnlyForRemote")]
 	LikeOnlyForRemote,
 	#[strum(serialize = "nonSensitiveOnly")]
+	#[serde(rename = "nonSensitiveOnly")]
 	NonSensitiveOnly,
 	#[strum(serialize = "nonSensitiveOnlyForLocalLikeOnlyForRemote")]
+	#[serde(rename = "nonSensitiveOnlyForLocalLikeOnlyForRemote")]
 	NonSensitiveOnlyForLocalLikeOnlyForRemote,
 }
 impl ToSql<VarChar, diesel::pg::Pg> for NoteReactionAcceptances
@@ -169,24 +177,41 @@ where
 		Ok(serde_json::from_str::<Self>(&v.to_string()).map_err(|e| Box::new(e))?)
 	}
 }
-#[derive(Copy, Clone, EnumString, Display, Default, Debug, FromSqlRow, AsExpression)]
+#[derive(
+	Copy,
+	Clone,
+	PartialEq,
+	Eq,
+	EnumString,
+	Display,
+	Default,
+	Debug,
+	FromSqlRow,
+	AsExpression,
+	Serialize,
+	Deserialize,
+)]
 #[diesel(sql_type = VarChar)]
-pub enum NoteVisibilities {
+pub enum NoteVisibility {
 	#[default]
 	#[strum(serialize = "public")]
+	#[serde(rename = "public")]
 	/** 公開 */
 	Public,
 	#[strum(serialize = "home")]
+	#[serde(rename = "home")]
 	/** ホームタイムライン(ユーザーページのタイムライン含む)のみに流す */
 	Home,
 	#[strum(serialize = "followers")]
+	#[serde(rename = "followers")]
 	/** フォロワーのみ */
 	Followers,
 	#[strum(serialize = "specified")]
+	#[serde(rename = "specified")]
 	/** visibleUserIds で指定したユーザーのみ */
 	Specified,
 }
-impl ToSql<VarChar, diesel::pg::Pg> for NoteVisibilities
+impl ToSql<VarChar, diesel::pg::Pg> for NoteVisibility
 where
 	String: ToSql<VarChar, diesel::pg::Pg>,
 {
@@ -197,7 +222,7 @@ where
 		<String as ToSql<VarChar, diesel::pg::Pg>>::to_sql(&self.to_string(), &mut out.reborrow())
 	}
 }
-impl<DB: diesel::backend::Backend> FromSql<VarChar, DB> for NoteVisibilities
+impl<DB: diesel::backend::Backend> FromSql<VarChar, DB> for NoteVisibility
 where
 	String: FromSql<VarChar, DB>,
 {
@@ -208,40 +233,6 @@ where
 	}
 }
 
-#[derive(Copy, Clone, EnumString, Display, Debug, FromSqlRow, AsExpression)]
-#[diesel(sql_type = VarChar)]
-pub enum SearchableTypes {
-	#[strum(serialize = "public")]
-	/** だれでも */
-	Public,
-	#[strum(serialize = "followers")]
-	/** フォロワーのみ */
-	Followers,
-	#[strum(serialize = "reacted")]
-	/** 返信かリアクションしたユーザーのみ */
-	Reacted,
-}
-impl ToSql<VarChar, diesel::pg::Pg> for SearchableTypes
-where
-	String: ToSql<VarChar, diesel::pg::Pg>,
-{
-	fn to_sql<'b>(
-		&'b self,
-		out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>,
-	) -> diesel::serialize::Result {
-		<String as ToSql<VarChar, diesel::pg::Pg>>::to_sql(&self.to_string(), &mut out.reborrow())
-	}
-}
-impl<DB: diesel::backend::Backend> FromSql<VarChar, DB> for SearchableTypes
-where
-	String: FromSql<VarChar, DB>,
-{
-	fn from_sql(bytes: DB::RawValue<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-		let v = <String as FromSql<VarChar, DB>>::from_sql(bytes)?;
-		use std::str::FromStr;
-		Ok(Self::from_str(&v).or_else(|e| Err(Box::new(e)))?)
-	}
-}
 /*
 	@Column('varchar', {
 		length: 1024, array: true, default: '{}',
