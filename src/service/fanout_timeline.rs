@@ -5,10 +5,27 @@ use redis::{AsyncCommands, aio::MultiplexedConnection};
 use crate::{DataBase, MisskeyConfig, ServerError, models::note::MiNote};
 
 use super::{
-	event::EventService, id_service::IdService, meta::MetaService, role::RoleService,
+	event::EventService,
+	id_service::IdService,
+	meta::MetaService,
+	note::{NoteService, PackedNote},
+	role::RoleService,
 	user::UserService,
 };
-
+enum FanoutTimelineName<'a> {
+	Home(&'a String),
+	Local,
+}
+impl FanoutTimelineName<'_> {
+	fn to_name(&self, host: impl AsRef<str>) -> String {
+		match self {
+			FanoutTimelineName::Home(user_id) => {
+				format!("{}:list:homeTimeline:{}", host.as_ref(), user_id)
+			}
+			FanoutTimelineName::Local => todo!(),
+		}
+	}
+}
 #[derive(Clone, Debug)]
 pub struct FanoutTimelineService {
 	config: Arc<MisskeyConfig>,
@@ -20,6 +37,7 @@ pub struct FanoutTimelineService {
 	event_service: EventService,
 	redis_for_timelines: MultiplexedConnection,
 	host: String,
+	note_service: NoteService,
 }
 impl FanoutTimelineService {
 	pub fn new(
@@ -30,6 +48,7 @@ impl FanoutTimelineService {
 		id_service: IdService,
 		user_service: UserService,
 		event_service: EventService,
+		note_service: NoteService,
 		redis_for_timelines: MultiplexedConnection,
 		host: String,
 	) -> Self {
@@ -41,21 +60,32 @@ impl FanoutTimelineService {
 			id_service,
 			user_service,
 			event_service,
+			note_service,
 			redis_for_timelines,
 			host,
 		}
 	}
-}
-impl FanoutTimelineService {
-	pub async fn get_notes(&self, user_id: &String) -> Result<Vec<MiNote>, ServerError> {
+	pub async fn home_tl(&self, user_id: &String) -> Result<Vec<PackedNote>, ServerError> {
+		let iter = self
+			.get_notes(&FanoutTimelineName::Home(user_id))
+			.await?
+			.into_iter()
+			.map(|note| self.note_service.pack(note));
+		//Ok(futures::prelude::future::join_all(iter).await)
+		let mut notes = vec![];
+		for job in iter {
+			notes.push(job.await?);
+		}
+		Ok(notes)
+	}
+	pub async fn get_notes(
+		&self,
+		timeline: &FanoutTimelineName<'_>,
+	) -> Result<Vec<MiNote>, ServerError> {
 		let tl = self
 			.redis_for_timelines
 			.clone()
-			.lrange::<String, Vec<String>>(
-				format!("{}:list:homeTimeline:{}", self.host, user_id),
-				0,
-				-1,
-			)
+			.lrange::<String, Vec<String>>(timeline.to_name(&self.host), 0, -1)
 			.await?;
 		println!("{:?}", tl);
 		use diesel::ExpressionMethods;

@@ -12,7 +12,8 @@ use serde::{Deserialize, Serialize};
 use service::{
 	announcement::AnnouncementService, drive::DriveService, event::EventService,
 	fanout_timeline::FanoutTimelineService, file_meta::FileMetaService, id_service::IdService,
-	meta::MetaService, role::RoleService, token_service::TokenService, user::UserService,
+	meta::MetaService, note::NoteService, role::RoleService, token_service::TokenService,
+	user::UserService,
 };
 mod api;
 mod browsersafe;
@@ -127,6 +128,7 @@ pub struct Context {
 	pub user_service: UserService,
 	pub meta_service: MetaService,
 	pub fanout_timeline_service: FanoutTimelineService,
+	pub note_service: NoteService,
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 enum FilterType {
@@ -284,6 +286,7 @@ fn main() {
 		let role_service = RoleService::new(db.clone(), meta_service.clone());
 		let announcement_service = AnnouncementService::new(db.clone());
 		let user_service = UserService::new(
+			misskey_config.clone(),
 			redis.clone(),
 			db.clone(),
 			id_service.clone(),
@@ -305,6 +308,15 @@ fn main() {
 		);
 		let url = reqwest::Url::parse(misskey_config.url.as_str()).expect("url parse");
 		let host = url.host().expect("bad server url config").to_string();
+		let note_service = NoteService::new(
+			misskey_config.clone(),
+			db.clone(),
+			meta_service.clone(),
+			role_service.clone(),
+			id_service.clone(),
+			user_service.clone(),
+			event_service.clone(),
+		);
 		let fanout_timeline_service = FanoutTimelineService::new(
 			misskey_config.clone(),
 			db.clone(),
@@ -313,6 +325,7 @@ fn main() {
 			id_service,
 			user_service.clone(),
 			event_service.clone(),
+			note_service.clone(),
 			redis_for_timelines,
 			host.clone(),
 		);
@@ -332,6 +345,7 @@ fn main() {
 			user_service,
 			meta_service,
 			misskey_config,
+			note_service,
 			fanout_timeline_service,
 			host,
 		};

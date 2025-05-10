@@ -44,6 +44,7 @@ diesel::table! {
 		emojis -> Array<VarChar>,
 		tags -> Array<VarChar>,
 		hasPoll -> Bool,
+		reactionAndUserPairCache -> Array<VarChar>,
 	}
 }
 #[derive(
@@ -105,6 +106,8 @@ pub struct MiNote {
 	pub tags: Vec<String>,
 	#[diesel(column_name = "hasPoll")]
 	pub has_poll: bool,
+	#[diesel(column_name = "reactionAndUserPairCache")]
+	pub reaction_and_user_pair_cache: Vec<String>,
 }
 #[derive(Copy, Clone, EnumString, Display, Debug, FromSqlRow, AsExpression)]
 #[diesel(sql_type = VarChar)]

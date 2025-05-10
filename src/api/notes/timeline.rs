@@ -23,7 +23,7 @@ pub async fn post(
 	let meta = ctx.meta_service.load(true).await.ok_or("fetch meta")?;
 	let user_id = permission.as_user_id().await.ok_or("token")?;
 	if meta.other.enable_fanout_timeline {
-		let notes = ctx.fanout_timeline_service.get_notes(user_id).await?;
+		let notes = ctx.fanout_timeline_service.home_tl(user_id).await?;
 		println!("FTT {:?}", notes);
 	}
 	//TODO 良い感じ

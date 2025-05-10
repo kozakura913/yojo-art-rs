@@ -17,8 +17,12 @@ diesel::table! {
 		name -> Nullable<VarChar>,
 		followersCount -> Int4,
 		followingCount -> Int4,
+		notesCount -> Int4,
 		token -> Nullable<VarChar>,
 		host -> Nullable<VarChar>,
+		avatarUrl -> Nullable<VarChar>,
+		avatarBlurhash -> Nullable<VarChar>,
+		avatarDecorations -> Array<VarChar>,
 	}
 }
 #[derive(
@@ -42,6 +46,7 @@ pub struct MiUser {
 	pub last_active_date: Option<NaiveDateTime>,
 	#[diesel(column_name = "hideOnlineStatus")]
 	pub hide_online_status: bool,
+	pub name: Option<String>,
 	pub username: String,
 	#[diesel(column_name = "usernameLower")]
 	pub username_lower: String,
@@ -51,8 +56,16 @@ pub struct MiUser {
 	pub followers_count: i32,
 	#[diesel(column_name = "followingCount")]
 	pub following_count: i32,
+	#[diesel(column_name = "notesCount")]
+	pub notes_count: i32,
 	pub token: Option<String>, //リモートユーザーは持たない
 	pub host: Option<String>,  //ローカルユーザーは持たない
+	#[diesel(column_name = "avatarUrl")]
+	pub avatar_url: Option<String>,
+	#[diesel(column_name = "avatarBlurhash")]
+	pub avatar_blurhash: Option<String>,
+	#[diesel(column_name = "avatarDecorations")]
+	pub avatar_decorations: Vec<String>,
 }
 impl MiUser {
 	pub async fn load_by_id(con: &mut DBConnection<'_>, user_id: &str) -> Option<Self> {
