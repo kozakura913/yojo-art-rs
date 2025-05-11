@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use redis::{AsyncCommands, aio::MultiplexedConnection};
 
-use crate::{DataBase, MisskeyConfig, ServerError, models::note::MiNote};
+use crate::{DBConnection, DataBase, MisskeyConfig, ServerError, models::note::MiNote};
 
 use super::{
 	event::EventService,
@@ -12,7 +12,7 @@ use super::{
 	role::RoleService,
 	user::UserService,
 };
-enum FanoutTimelineName<'a> {
+pub enum FanoutTimelineName<'a> {
 	Home(&'a String),
 	Local,
 }
@@ -66,20 +66,24 @@ impl FanoutTimelineService {
 		}
 	}
 	pub async fn home_tl(&self, user_id: &String) -> Result<Vec<PackedNote>, ServerError> {
-		let iter = self
-			.get_notes(&FanoutTimelineName::Home(user_id))
-			.await?
-			.into_iter()
-			.map(|note| self.note_service.pack_detail(note, user_id));
-		//Ok(futures::prelude::future::join_all(iter).await)
-		let mut notes = vec![];
-		for job in iter {
-			notes.push(job.await?);
+		let mut con = self.db.get().await.ok_or("db error")?;
+		let mut user_cache = HashMap::new();
+		let notes = self
+			.get_notes(&mut con, &FanoutTimelineName::Home(user_id))
+			.await?;
+		let mut packed_notes = vec![];
+		for note in notes {
+			let packed_note = self
+				.note_service
+				.pack_detail(&mut con, note, user_id, &mut user_cache)
+				.await?;
+			packed_notes.push(packed_note);
 		}
-		Ok(notes)
+		Ok(packed_notes)
 	}
 	pub async fn get_notes(
 		&self,
+		con: &mut DBConnection<'_>,
 		timeline: &FanoutTimelineName<'_>,
 	) -> Result<Vec<MiNote>, ServerError> {
 		let tl = self
@@ -95,13 +99,12 @@ impl FanoutTimelineService {
 
 		use crate::{DataBase, models::note::MiNote};
 
-		let mut con = self.db.get().await.ok_or("db error")?;
 		let notes: Vec<MiNote> = {
 			use crate::models::note::note::dsl::note;
 			use crate::models::note::note::dsl::*;
 			note.filter(id.eq_any(&tl))
 				.select(MiNote::as_select())
-				.load(&mut con)
+				.load(con)
 				.await
 				.map_err(|e| {
 					eprintln!("{:?}", e);

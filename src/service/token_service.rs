@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	DBConnection, DataBase,
+	DBConnection, DataBase, ServerError,
 	models::{access_token::MiAccessToken, user::MiUser},
 };
 
@@ -40,15 +40,15 @@ impl TokenPermission {
 			TokenPermission::None => false,
 		}
 	}
-	pub async fn load_user(&self, db: &mut DBConnection<'_>) -> Option<Cow<MiUser>> {
+	pub async fn load_user(&self, db: &mut DBConnection<'_>) -> Result<Cow<MiUser>, ServerError> {
 		match self {
 			TokenPermission::Token(mi_access_token) => {
-				MiUser::load_by_id(db, &mi_access_token.user_id)
+				Ok(MiUser::load_by_id(db, &mi_access_token.user_id)
 					.await
-					.map(|t| Cow::Owned(t))
+					.map(|t| Cow::Owned(t))?)
 			}
-			TokenPermission::Master(mi_user) => Some(Cow::Borrowed(mi_user)),
-			TokenPermission::None => None,
+			TokenPermission::Master(mi_user) => Ok(Cow::Borrowed(mi_user)),
+			TokenPermission::None => Err("guest user".into()),
 		}
 	}
 	pub async fn as_user_id(&self) -> Option<&String> {
@@ -58,13 +58,13 @@ impl TokenPermission {
 			TokenPermission::None => None,
 		}
 	}
-	pub async fn into_user(self, db: &mut DBConnection<'_>) -> Option<MiUser> {
+	pub async fn into_user(self, db: &mut DBConnection<'_>) -> Result<MiUser, ServerError> {
 		match self {
 			TokenPermission::Token(mi_access_token) => {
-				MiUser::load_by_id(db, &mi_access_token.user_id).await
+				Ok(MiUser::load_by_id(db, &mi_access_token.user_id).await?)
 			}
-			TokenPermission::Master(mi_user) => Some(mi_user),
-			TokenPermission::None => None,
+			TokenPermission::Master(mi_user) => Ok(mi_user),
+			TokenPermission::None => Err("guest user".into()),
 		}
 	}
 }
@@ -81,8 +81,8 @@ impl TokenService {
 		}
 		let user = MiUser::load_by_token(&mut con, token_id).await;
 		match user {
-			Some(user) => TokenPermission::Master(user),
-			None => TokenPermission::None,
+			Ok(user) => TokenPermission::Master(user),
+			_ => TokenPermission::None,
 		}
 	}
 }

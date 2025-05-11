@@ -62,7 +62,7 @@ pub async fn post(
 				Some(token) => MiUser::load_by_id(&mut con, &token.user_id).await,
 				None => MiUser::load_by_token(&mut con, &q.i).await,
 			};
-			if let Some(me) = user.as_ref() {
+			if let Ok(me) = user.as_ref() {
 				println!("call register_preflight");
 				register_preflight_result = ctx
 					.drive_service
@@ -77,6 +77,9 @@ pub async fn post(
 					.await;
 			} else {
 				println!("not found MiUser");
+				let mut header = axum::http::header::HeaderMap::new();
+				header.insert("X-ErrorStatus", "not found MiUser".parse().unwrap());
+				return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, header).into_response();
 			}
 		}
 		_ => {

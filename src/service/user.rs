@@ -422,7 +422,7 @@ impl UserService {
 			is_bot: user.is_bot,
 			is_cat: user.is_cat,
 			is_proxy: meta.other.proxy_account_id.as_ref() == Some(&user.id),
-			require_signin_to_view_contents: user.requireSigninToViewContents,
+			require_signin_to_view_contents: user.require_signin_to_view_contents,
 			make_notes_followers_only_before: user.make_notes_followers_only_before,
 			make_notes_hidden_before: user.make_notes_hidden_before,
 			instance: None,         //TODO 後で

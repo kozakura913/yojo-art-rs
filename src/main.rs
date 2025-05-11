@@ -20,11 +20,19 @@ mod browsersafe;
 mod models;
 mod service;
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct ServerError(String);
+#[derive(Clone)]
+pub struct ServerError {
+	status: StatusCode,
+	text: String,
+}
 impl IntoResponse for ServerError {
 	fn into_response(self) -> axum::response::Response {
-		(StatusCode::INTERNAL_SERVER_ERROR, self.0).into_response()
+		(self.status, self.text).into_response()
+	}
+}
+impl ServerError {
+	pub fn new(status: StatusCode, text: String) -> Self {
+		Self { status, text }
 	}
 }
 impl<T> From<T> for ServerError
@@ -32,7 +40,10 @@ where
 	T: std::fmt::Debug,
 {
 	fn from(value: T) -> Self {
-		Self(format!("{:?}", value))
+		Self {
+			status: StatusCode::INTERNAL_SERVER_ERROR,
+			text: format!("{:?}", value),
+		}
 	}
 }
 

@@ -41,8 +41,8 @@ pub async fn post(
 		return StatusCode::INTERNAL_SERVER_ERROR.into_response();
 	};
 	let user = match permission.into_user(&mut con).await {
-		Some(user) => user,
-		None => return StatusCode::FORBIDDEN.into_response(),
+		Ok(user) => user,
+		Err(e) => return e.into_response(),
 	};
 
 	let file: Option<MiDriveFile> = {

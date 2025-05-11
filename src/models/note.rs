@@ -11,6 +11,9 @@ use std::collections::HashMap;
 use strum_macros::{Display, EnumString};
 
 use super::common::SearchableTypes;
+use crate::DBConnection;
+use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
+use diesel_async::RunQueryDsl;
 
 diesel::table! {
 	#[sql_name = "note"]
@@ -232,7 +235,19 @@ where
 		Ok(Self::from_str(&v).or_else(|e| Err(Box::new(e)))?)
 	}
 }
-
+impl MiNote {
+	pub async fn load_by_id(
+		con: &mut DBConnection<'_>,
+		note_id: &str,
+	) -> Result<Self, diesel::result::Error> {
+		use self::note::dsl::note;
+		use self::note::dsl::*;
+		note.filter(id.eq(note_id))
+			.select(Self::as_select())
+			.first(con)
+			.await
+	}
+}
 /*
 	@Column('varchar', {
 		length: 1024, array: true, default: '{}',

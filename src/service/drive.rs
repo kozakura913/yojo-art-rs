@@ -480,6 +480,7 @@ impl DriveService {
 		folder: Option<&MiDriveFolder>,
 		user: Option<&MiUser>,
 	) -> Option<serde_json::Value> {
+		//TODO 後で作り直す
 		let mut map = serde_json::Map::new();
 		map.insert("id".into(), file.id.as_str().into());
 		map.insert(
@@ -565,6 +566,7 @@ impl DriveService {
 				} else {
 					MiUser::load_by_id(con, user_id)
 						.await
+						.ok()
 						.map(|v| Cow::Owned(v))
 				};
 				match user.as_ref() {

@@ -64,60 +64,47 @@ impl NoteService {
 	}
 	pub async fn pack_detail(
 		&self,
+		con: &mut DBConnection<'_>,
 		note: MiNote,
 		me_id: &String,
+		user_cache: &mut HashMap<String, MiUser>,
 	) -> Result<PackedNote, ServerError> {
-		let mut con = self.db.get().await.ok_or("db")?;
 		let reply = match note.reply_id.as_ref() {
 			Some(reply_id) => {
-				let reply: MiNote = {
-					use crate::models::note::note::dsl::note;
-					use crate::models::note::note::dsl::*;
-					use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
-					use diesel_async::RunQueryDsl;
-					note.filter(id.eq(&reply_id))
-						.select(MiNote::as_select())
-						.first(&mut con)
-						.await
-						.map_err(|e| {
-							eprintln!("{:?}", e);
-						})
-				}?;
-				Some(Box::new(self.pack(reply, me_id).await?))
+				let reply = MiNote::load_by_id(con, reply_id).await?;
+				Some(Box::new(self.pack(con, reply, me_id, user_cache).await?))
 			}
 			None => None,
 		};
 		let renote = match note.renote_id.as_ref() {
 			Some(renote_id) => {
-				let renote: MiNote = {
-					use crate::models::note::note::dsl::note;
-					use crate::models::note::note::dsl::*;
-					use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
-					use diesel_async::RunQueryDsl;
-					note.filter(id.eq(&renote_id))
-						.select(MiNote::as_select())
-						.first(&mut con)
-						.await
-						.map_err(|e| {
-							eprintln!("{:?}", e);
-						})
-				}?;
-				Some(Box::new(self.pack(renote, me_id).await?))
+				let renote = MiNote::load_by_id(con, &renote_id).await?;
+				Some(Box::new(self.pack(con, renote, me_id, user_cache).await?))
 			}
 			None => None,
 		};
 		let clipped_count = note.clipped_count;
-		let mut packed_note = self.pack(note, me_id).await?;
+		let mut packed_note = self.pack(con, note, me_id, user_cache).await?;
 		packed_note.renote = renote;
 		packed_note.reply = reply;
 		packed_note.clipped_count = Some(clipped_count);
 		Ok(packed_note)
 	}
-	pub async fn pack(&self, note: MiNote, me_id: &String) -> Result<PackedNote, ServerError> {
-		let mut con = self.db.get().await.ok_or("db")?;
-		let user = MiUser::load_by_id(&mut con, &note.user_id)
-			.await
-			.ok_or("no_user")?;
+	pub async fn pack(
+		&self,
+		con: &mut DBConnection<'_>,
+		note: MiNote,
+		me_id: &String,
+		user_cache: &mut HashMap<String, MiUser>,
+	) -> Result<PackedNote, ServerError> {
+		let user = match user_cache.get(&note.user_id) {
+			Some(u) => u,
+			None => {
+				let u = MiUser::load_by_id(con, &note.user_id).await?;
+				user_cache.insert(note.user_id.clone(), u);
+				user_cache.get(&note.user_id).ok_or("no user")?
+			}
+		};
 		let visible_user_ids = if note.visibility == NoteVisibility::Specified {
 			Some(note.visible_user_ids)
 		} else {
@@ -136,7 +123,7 @@ impl NoteService {
 				drive_file
 					.filter(id.eq_any(&note.file_ids))
 					.select(MiDriveFile::as_select())
-					.load(&mut con)
+					.load(con)
 					.await
 			}?;
 			let mut packed_files = Vec::new();
@@ -144,13 +131,13 @@ impl NoteService {
 				let is_my_file = f.user_id.as_ref() == Some(me_id);
 				let packed = self
 					.drive_service
-					.pack(&mut con, f, is_my_file, false, false, None, Some(&user))
+					.pack(con, f, is_my_file, false, false, None, Some(&user))
 					.await;
 				packed_files.push(packed.ok_or("pack file")?);
 			}
 			packed_files
 		};
-		let user = self.user_service.pack_lite(user).await?;
+		let user = self.user_service.pack_lite(user.clone()).await?;
 		let mut packed_note = PackedNote {
 			created_at: self
 				.id_service

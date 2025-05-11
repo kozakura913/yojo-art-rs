@@ -119,42 +119,34 @@ pub struct MiUser {
 	/** in sec, マイナスで相対時間*/
 	pub make_notes_hidden_before: Option<i32>,
 	#[diesel(column_name = "requireSigninToViewContents")]
-	pub requireSigninToViewContents: bool,
+	pub require_signin_to_view_contents: bool,
 	#[diesel(column_name = "setFederationAvatarShape")]
 	pub set_federation_avatar_shape: Option<bool>,
 	#[diesel(column_name = "isSquareAvatars")]
 	pub is_square_avatars: Option<bool>,
 }
 impl MiUser {
-	pub async fn load_by_id(con: &mut DBConnection<'_>, user_id: &str) -> Option<Self> {
-		let res: MiUser = {
-			use self::user::dsl::user;
-			use self::user::dsl::*;
-			user.filter(id.eq(user_id))
-				.select(MiUser::as_select())
-				.first(con)
-				.await
-				.map_err(|e| {
-					eprintln!("{:?}", e);
-				})
-		}
-		.ok()?;
-		Some(res)
+	pub async fn load_by_id(
+		con: &mut DBConnection<'_>,
+		user_id: &str,
+	) -> Result<Self, diesel::result::Error> {
+		use self::user::dsl::user;
+		use self::user::dsl::*;
+		user.filter(id.eq(user_id))
+			.select(Self::as_select())
+			.first(con)
+			.await
 	}
-	pub async fn load_by_token(con: &mut DBConnection<'_>, user_token: &str) -> Option<Self> {
-		let res: MiUser = {
-			use self::user::dsl::user;
-			use self::user::dsl::*;
-			user.filter(token.eq(user_token))
-				.select(MiUser::as_select())
-				.first(con)
-				.await
-				.map_err(|e| {
-					eprintln!("{:?}", e);
-				})
-		}
-		.ok()?;
-		Some(res)
+	pub async fn load_by_token(
+		con: &mut DBConnection<'_>,
+		user_token: &str,
+	) -> Result<Self, diesel::result::Error> {
+		use self::user::dsl::user;
+		use self::user::dsl::*;
+		user.filter(token.eq(user_token))
+			.select(Self::as_select())
+			.first(con)
+			.await
 	}
 }
 
