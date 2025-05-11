@@ -18,7 +18,13 @@ use crate::{
 };
 
 use super::{
-	drive::DriveService, emoji::EmojiService, event::EventService, id_service::IdService, meta::MetaService, role::RoleService, user::{PackedUserLite, UserService}
+	drive::DriveService,
+	emoji::EmojiService,
+	event::EventService,
+	id_service::IdService,
+	meta::MetaService,
+	role::RoleService,
+	user::{PackedUserLite, UserService},
 };
 #[derive(Clone, Debug)]
 pub struct NoteService {
@@ -29,7 +35,7 @@ pub struct NoteService {
 	drive_service: DriveService,
 	id_service: IdService,
 	user_service: UserService,
-	emoji_service:EmojiService,
+	emoji_service: EmojiService,
 	event_service: EventService,
 }
 
@@ -42,7 +48,7 @@ impl NoteService {
 		drive_service: DriveService,
 		id_service: IdService,
 		user_service: UserService,
-		emoji_service:EmojiService,
+		emoji_service: EmojiService,
 		event_service: EventService,
 	) -> Self {
 		Self {
@@ -106,26 +112,35 @@ impl NoteService {
 			None
 		};
 		let mut reaction_count = 0;
-		let mut reactions=note.reactions;
-		reactions.0={
-			let mut map=HashMap::new();
-			for (k,v) in reactions.0.into_iter().filter(|(_,count)|count.is_positive()){
-				map.insert(k,v);
+		let mut reactions = note.reactions;
+		reactions.0 = {
+			let mut map = HashMap::new();
+			for (k, v) in reactions
+				.0
+				.into_iter()
+				.filter(|(_, count)| count.is_positive())
+			{
+				map.insert(k, v);
 			}
 			map
 		};
 		for count in reactions.0.values() {
 			reaction_count += *count;
 		}
-		let reaction_emoji_names=reactions.0.keys().into_iter().map(|emoji_name|{
-			if emoji_name.len()>2{
-				let mut chars=emoji_name.chars();
-				if chars.next()==Some(':')&&chars.rev().next()==Some(':'){
-					return (&emoji_name[1..emoji_name.len()-1]).to_owned();
+		let reaction_emoji_names = reactions
+			.0
+			.keys()
+			.into_iter()
+			.map(|emoji_name| {
+				if emoji_name.len() > 2 {
+					let mut chars = emoji_name.chars();
+					if chars.next() == Some(':') && chars.rev().next() == Some(':') {
+						return (&emoji_name[1..emoji_name.len() - 1]).to_owned();
+					}
 				}
-			}
-			emoji_name.to_owned()
-		}).collect();
+				emoji_name.to_owned()
+			})
+			.collect();
 		let files = {
 			let files: Vec<MiDriveFile> = {
 				use crate::models::drive_file::drive_file::dsl::drive_file;
@@ -149,21 +164,28 @@ impl NoteService {
 			}
 			packed_files
 		};
-		let emojis=if let Some(host)=user.host.as_ref(){
-			let mut emojis=note.emojis;
-			for emoji_name in emojis.iter_mut(){
-				if emoji_name.len()>2{
-					let mut chars=emoji_name.chars();
-					if chars.next()==Some(':')&&chars.rev().next()==Some(':'){
-						*emoji_name=(&emoji_name[1..emoji_name.len()-1]).to_owned();
+		let emojis = if let Some(host) = user.host.as_ref() {
+			let mut emojis = note.emojis;
+			for emoji_name in emojis.iter_mut() {
+				if emoji_name.len() > 2 {
+					let mut chars = emoji_name.chars();
+					if chars.next() == Some(':') && chars.rev().next() == Some(':') {
+						*emoji_name = (&emoji_name[1..emoji_name.len() - 1]).to_owned();
 					}
 				}
 			}
-			Some(self.emoji_service.populate_emojis(con,emojis,Some(host.clone())).await)
-		}else{
+			Some(
+				self.emoji_service
+					.populate_emojis(con, emojis, Some(host.clone()))
+					.await,
+			)
+		} else {
 			None
 		};
-		let reaction_emojis=self.emoji_service.populate_emojis(con,reaction_emoji_names,user.host.clone()).await;
+		let reaction_emojis = self
+			.emoji_service
+			.populate_emojis(con, reaction_emoji_names, user.host.clone())
+			.await;
 		let user = self.user_service.pack_lite(user.clone()).await?;
 		let mut packed_note = PackedNote {
 			created_at: self

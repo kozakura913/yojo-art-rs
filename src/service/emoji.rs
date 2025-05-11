@@ -40,7 +40,8 @@ impl std::fmt::Debug for EmojiService {
 			.finish()
 	}
 }
-const PARSE_EMOJI_STR_REGEXP: &'static str = "^([0-9A-Za-z_\\.-]+){1}((@(\\w+\\.)+?)+(\\w{2,})){0,1}?$";
+const PARSE_EMOJI_STR_REGEXP: &'static str =
+	"^([0-9A-Za-z_\\.-]+){1}((@(\\w+\\.)+?)+(\\w{2,})){0,1}?$";
 impl EmojiService {
 	pub fn new(db: DataBase, host: String) -> Self {
 		let parse_emoji_str_regexp = regex::Regex::new(PARSE_EMOJI_STR_REGEXP).unwrap();
@@ -65,11 +66,11 @@ impl EmojiService {
 		let job = emojis
 			.iter()
 			.map(|emoji| self.populate_emoji(con.clone().into(), emoji.clone(), user_host.clone()));
-		let urls=futures::future::join_all(job).await;
+		let urls = futures::future::join_all(job).await;
 		let mut map = HashMap::new();
-		for (emoji,url) in emojis.into_iter().zip(urls){
-			if let Some(url)=url{
-				map.insert(emoji,url);
+		for (emoji, url) in emojis.into_iter().zip(urls) {
+			if let Some(url) = url {
+				map.insert(emoji, url);
 			}
 		}
 		map
@@ -94,7 +95,7 @@ impl EmojiService {
 			let rl = self.cache.read().await;
 			rl.get(&key).cloned()
 		};
-		println!("cache hit:{:?}",emoji);
+		println!("cache hit:{:?}", emoji);
 		let emoji = match emoji {
 			Some(cache_hit) => cache_hit,
 			None => {
@@ -113,13 +114,14 @@ impl EmojiService {
 							let mut con = m.lock().await;
 							query.first(&mut con).await
 						}
-					}.map_err(|e|{
-						eprintln!("{}:{} {:?}",file!(),line!(),e);
+					}
+					.map_err(|e| {
+						eprintln!("{}:{} {:?}", file!(), line!(), e);
 					})
 					.ok()
 				}?;
 				let mut wl = self.cache.write().await;
-				wl.insert(key,emoji.clone(),Some(Duration::from_secs(5*60)));
+				wl.insert(key, emoji.clone(), Some(Duration::from_secs(5 * 60)));
 				emoji
 			}
 		};
