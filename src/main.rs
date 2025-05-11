@@ -10,11 +10,12 @@ use redis::aio::MultiplexedConnection;
 use s3::Bucket;
 use serde::{Deserialize, Serialize};
 use service::{
-	announcement::AnnouncementService, drive::DriveService, event::EventService,
-	fanout_timeline::FanoutTimelineService, file_meta::FileMetaService, id_service::IdService,
-	meta::MetaService, note::NoteService, role::RoleService, token_service::TokenService,
-	user::UserService,
+	announcement::AnnouncementService, drive::DriveService, emoji::EmojiService,
+	event::EventService, fanout_timeline::FanoutTimelineService, file_meta::FileMetaService,
+	id_service::IdService, meta::MetaService, note::NoteService, role::RoleService,
+	token_service::TokenService, user::UserService,
 };
+use tokio::sync::Mutex;
 mod api;
 mod browsersafe;
 mod models;
@@ -299,6 +300,7 @@ fn main() {
 		let meta_service = MetaService::new(db.clone());
 		let role_service = RoleService::new(db.clone(), meta_service.clone());
 		let announcement_service = AnnouncementService::new(db.clone());
+		let emoji_service = EmojiService::new(db.clone(), host.clone());
 		let user_service = UserService::new(
 			misskey_config.clone(),
 			redis.clone(),
@@ -329,6 +331,7 @@ fn main() {
 			drive_service.clone(),
 			id_service.clone(),
 			user_service.clone(),
+			emoji_service.clone(),
 			event_service.clone(),
 		);
 		let fanout_timeline_service = FanoutTimelineService::new(
@@ -472,6 +475,26 @@ impl Context {
 pub struct DataBase(diesel_async::pooled_connection::bb8::Pool<AsyncPgConnection>);
 pub type DBConnection<'a> =
 	diesel_async::pooled_connection::bb8::PooledConnection<'a, AsyncPgConnection>;
+pub enum DBConnectionRef<'a, 'b> {
+	Borrowed(&'b mut DBConnection<'a>),
+	Mutex(Arc<Mutex<&'b mut DBConnection<'a>>>),
+}
+impl<'a, 'b> From<&'b mut DBConnection<'a>> for DBConnectionRef<'a, 'b> {
+	fn from(value: &'b mut DBConnection<'a>) -> Self {
+		Self::Borrowed(value)
+	}
+}
+impl<'a, 'b> From<Arc<Mutex<&'b mut DBConnection<'a>>>> for DBConnectionRef<'a, 'b> {
+	fn from(value: Arc<Mutex<&'b mut DBConnection<'a>>>) -> Self {
+		value.lock();
+		Self::Mutex(value)
+	}
+}
+impl<'a, 'b> DBConnectionRef<'a, 'b> {
+	pub fn new_mutex(value: &'b mut DBConnection<'a>) -> Self {
+		Self::Mutex(Arc::new(Mutex::new(value)))
+	}
+}
 impl DataBase {
 	pub async fn open(database_url: &str) -> Result<Self, String> {
 		let config = diesel_async::pooled_connection::AsyncDieselConnectionManager::<

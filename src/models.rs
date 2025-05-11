@@ -5,6 +5,7 @@ pub mod blocking;
 pub mod common;
 pub mod drive_file;
 pub mod drive_folder;
+pub mod emoji;
 pub mod follow_request;
 pub mod following;
 pub mod meta;

@@ -1,5 +1,6 @@
 pub mod announcement;
 pub mod drive;
+pub mod emoji;
 pub mod event;
 pub mod fanout_timeline;
 pub mod file_meta;
