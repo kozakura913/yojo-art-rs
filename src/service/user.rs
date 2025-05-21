@@ -430,12 +430,12 @@ impl UserService {
 			None => None,
 		};
 		let meta = self.meta_service.load(false).await.ok_or("meta")?;
-		let avatar_decorations= user
-				.avatar_decorations
-				.into_inner()
-				.into_iter()
-				.map(|n| n.into())
-				.collect();
+		let avatar_decorations = user
+			.avatar_decorations
+			.into_inner()
+			.into_iter()
+			.map(|n| n.into())
+			.collect();
 		//TODO avatar_decorationsのurlをDBから持ってくる
 		Ok(PackedUserLite {
 			name: user.name,

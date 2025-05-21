@@ -65,11 +65,21 @@ impl FanoutTimelineService {
 			host,
 		}
 	}
-	pub async fn home_tl(&self, user_id: &String) -> Result<Vec<PackedNote>, ServerError> {
+	pub async fn home_tl(
+		&self,
+		user_id: &String,
+		until_id: Option<String>,
+		since_id: Option<String>,
+	) -> Result<Vec<PackedNote>, ServerError> {
 		let mut con = self.db.get().await.ok_or("db error")?;
 		let mut user_cache = HashMap::new();
 		let notes = self
-			.get_notes(&mut con, &FanoutTimelineName::Home(user_id))
+			.get_notes(
+				&mut con,
+				&FanoutTimelineName::Home(user_id),
+				since_id,
+				until_id,
+			)
 			.await?;
 		let mut packed_notes = vec![];
 		for note in notes {
@@ -85,12 +95,32 @@ impl FanoutTimelineService {
 		&self,
 		con: &mut DBConnection<'_>,
 		timeline: &FanoutTimelineName<'_>,
+		until_id: Option<String>,
+		since_id: Option<String>,
 	) -> Result<Vec<MiNote>, ServerError> {
-		let tl = self
+		let mut tl = self
 			.redis_for_timelines
 			.clone()
 			.lrange::<String, Vec<String>>(timeline.to_name(&self.host), 0, -1)
 			.await?;
+		let ascending = since_id.is_some() && until_id.is_none();
+		match (since_id.as_ref(), until_id.as_ref()) {
+			(Some(since_id), Some(until_id)) => {
+				tl.retain(|id| id < until_id && id > since_id);
+			}
+			(None, Some(until_id)) => {
+				tl.retain(|id| id < until_id);
+			}
+			(Some(since_id), None) => {
+				tl.retain(|id| id > since_id);
+			}
+			(None, None) => {},
+		};
+		if ascending {
+			tl.sort_by(|a, b| a.cmp(b));
+		} else {
+			tl.sort_by(|a, b| b.cmp(a));
+		}
 		println!("{:?}", tl);
 		use diesel::ExpressionMethods;
 		use diesel::{QueryDsl, SelectableHelper};
@@ -99,7 +129,7 @@ impl FanoutTimelineService {
 
 		use crate::{DataBase, models::note::MiNote};
 
-		let notes: Vec<MiNote> = {
+		let mut notes: Vec<MiNote> = {
 			use crate::models::note::note::dsl::note;
 			use crate::models::note::note::dsl::*;
 			note.filter(id.eq_any(&tl))
@@ -110,6 +140,13 @@ impl FanoutTimelineService {
 					eprintln!("{:?}", e);
 				})
 		}?;
+		notes.sort_by(|a, b| {
+			if ascending {
+				a.id.cmp(&b.id)
+			} else {
+				b.id.cmp(&a.id)
+			}
+		});
 		Ok(notes)
 	}
 }
