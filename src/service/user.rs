@@ -7,13 +7,17 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	DataBase, MisskeyConfig, ServerError,
 	models::{
-		following::MiFollowing, user::MiUser, user_memo::MiUserMemo,
-		user_note_pining::MiUserNotePining, user_profile::MiUserProfile,
+		following::MiFollowing,
+		user::{MiAvatarDecoration, MiUser},
+		user_memo::MiUserMemo,
+		user_note_pining::MiUserNotePining,
+		user_profile::MiUserProfile,
 	},
 };
 
 use super::{
-	announcement::AnnouncementService, id_service::IdService, meta::MetaService, role::RoleService,
+	announcement::AnnouncementService, emoji::EmojiService, id_service::IdService,
+	instance::InstanceService, meta::MetaService, role::RoleService,
 };
 
 pub const USER_ONLINE_THRESHOLD: i64 = 1000 * 60 * 10; // 10min
@@ -26,6 +30,8 @@ pub struct UserService {
 	id_service: IdService,
 	role_service: RoleService,
 	announcement_service: AnnouncementService,
+	emoji_service: EmojiService,
+	instance_service: InstanceService,
 	meta_service: MetaService,
 }
 #[derive(Default, PartialEq, Eq, Debug)]
@@ -71,6 +77,8 @@ impl UserService {
 		id_service: IdService,
 		role_service: RoleService,
 		announcement_service: AnnouncementService,
+		emoji_service: EmojiService,
+		instance_service: InstanceService,
 		meta_service: MetaService,
 	) -> Self {
 		Self {
@@ -80,6 +88,8 @@ impl UserService {
 			id_service,
 			role_service,
 			announcement_service,
+			emoji_service,
+			instance_service,
 			meta_service,
 		}
 	}
@@ -201,6 +211,8 @@ impl UserService {
 		todo!("ユーザーのpackは未実装");
 	}
 	pub async fn get_relation(&self, me_id: &str, target: &str) -> Option<UserRelation> {
+		use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
+		use diesel_async::RunQueryDsl;
 		let mut con = self.db.get().await?;
 		let f_following = async move {
 			let res: Option<MiFollowing> = {
@@ -324,8 +336,6 @@ impl UserService {
 				.ok();
 			res.is_some()
 		};
-		use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
-		use diesel_async::RunQueryDsl;
 		let (
 			following,
 			is_followed,
@@ -410,14 +420,30 @@ impl UserService {
 			user.avatar_url.unwrap()
 		};
 		println!("avatar_decorations={:?}", user.avatar_decorations);
+		let mut con = self.db.get().await.ok_or("db")?;
+		let instance = match user.host.as_ref() {
+			Some(host) => Some(
+				self.instance_service
+					.fetch_connection((&mut con).into(), host)
+					.await?,
+			),
+			None => None,
+		};
 		let meta = self.meta_service.load(false).await.ok_or("meta")?;
+		let avatar_decorations= user
+				.avatar_decorations
+				.into_inner()
+				.into_iter()
+				.map(|n| n.into())
+				.collect();
+		//TODO avatar_decorationsのurlをDBから持ってくる
 		Ok(PackedUserLite {
 			name: user.name,
 			username: user.username,
-			host: user.host,
+			host: user.host.clone(),
 			avatar_url,
 			avatar_blurhash: user.avatar_blurhash,
-			avatar_decorations: vec![], //TODO 後で
+			avatar_decorations,
 			is_locked: user.is_locked,
 			is_bot: user.is_bot,
 			is_cat: user.is_cat,
@@ -425,8 +451,18 @@ impl UserService {
 			require_signin_to_view_contents: user.require_signin_to_view_contents,
 			make_notes_followers_only_before: user.make_notes_followers_only_before,
 			make_notes_hidden_before: user.make_notes_hidden_before,
-			instance: None,         //TODO 後で
-			emojis: HashMap::new(), //TODO 後で
+			instance: instance.map(|instance| PackedInstance {
+				name: instance.name,
+				softwareName: instance.softwareName,
+				softwareVersion: instance.softwareVersion,
+				iconUrl: instance.iconUrl,
+				faviconUrl: instance.faviconUrl,
+				themeColor: instance.themeColor,
+			}),
+			emojis: self
+				.emoji_service
+				.populate_emojis(&mut con, user.emojis, user.host)
+				.await,
 			online_status,
 			set_federation_avatar_shape: user.set_federation_avatar_shape,
 			is_square_avatars: user.is_square_avatars,
@@ -513,11 +549,33 @@ pub struct PackedInstance {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PackedAvatarDecoration {
 	id: String,
-	angle: f64,
-	offsetX: f64,
-	offsetY: f64,
-	scale: f64,
-	opacity: f64,
-	flipH: bool,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	angle: Option<f64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	#[serde(rename = "offsetY")]
+	offset_x: Option<f64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	#[serde(rename = "offsetX")]
+	offset_y: Option<f64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	scale: Option<f64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	opacity: Option<f64>,
+	#[serde(rename = "flipH")]
+	flip_h: bool,
 	url: String,
+}
+impl From<MiAvatarDecoration> for PackedAvatarDecoration {
+	fn from(value: MiAvatarDecoration) -> Self {
+		Self {
+			id: value.id,
+			angle: value.angle,
+			offset_x: value.offset_x,
+			offset_y: value.offset_y,
+			scale: value.scale,
+			opacity: value.opacity,
+			flip_h: value.flip_h.unwrap_or(false),
+			url: String::new(),
+		}
+	}
 }

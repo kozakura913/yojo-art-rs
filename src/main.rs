@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 use service::{
 	announcement::AnnouncementService, drive::DriveService, emoji::EmojiService,
 	event::EventService, fanout_timeline::FanoutTimelineService, file_meta::FileMetaService,
-	id_service::IdService, meta::MetaService, note::NoteService, role::RoleService,
-	token_service::TokenService, user::UserService,
+	id_service::IdService, instance::InstanceService, meta::MetaService, note::NoteService,
+	role::RoleService, token_service::TokenService, user::UserService,
 };
 use tokio::sync::Mutex;
 mod api;
@@ -301,6 +301,7 @@ fn main() {
 		let role_service = RoleService::new(db.clone(), meta_service.clone());
 		let announcement_service = AnnouncementService::new(db.clone());
 		let emoji_service = EmojiService::new(db.clone(), host.clone());
+		let instance_service = InstanceService::new(db.clone(), redis.clone());
 		let user_service = UserService::new(
 			misskey_config.clone(),
 			redis.clone(),
@@ -308,6 +309,8 @@ fn main() {
 			id_service.clone(),
 			role_service.clone(),
 			announcement_service,
+			emoji_service.clone(),
+			instance_service.clone(),
 			meta_service.clone(),
 		);
 		let event_service = EventService::new(

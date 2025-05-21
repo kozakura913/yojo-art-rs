@@ -8,6 +8,7 @@ pub mod drive_folder;
 pub mod emoji;
 pub mod follow_request;
 pub mod following;
+pub mod instance;
 pub mod meta;
 pub mod muting;
 pub mod note;

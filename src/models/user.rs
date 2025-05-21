@@ -15,6 +15,7 @@ use crate::DBConnection;
 
 use super::common::SearchableTypes;
 
+//TODO テーブル分割したい(32制限に収めたい)
 diesel::table! {
 	#[sql_name = "user"]
 	user (id) {
@@ -30,6 +31,8 @@ diesel::table! {
 		followingCount -> Int4,
 		notesCount -> Int4,
 		token -> Nullable<VarChar>,
+		isDeleted -> Bool,
+		emojis -> Array<VarChar>,
 		host -> Nullable<VarChar>,
 		avatarUrl -> Nullable<VarChar>,
 		avatarBlurhash -> Nullable<VarChar>,
@@ -59,6 +62,8 @@ diesel::table! {
 	diesel::Queryable,
 	Selectable,
 	diesel::QueryableByName,
+	Serialize,
+	Deserialize,
 )]
 #[diesel(table_name = user)]
 pub struct MiUser {
@@ -84,7 +89,10 @@ pub struct MiUser {
 	#[diesel(column_name = "notesCount")]
 	pub notes_count: i32,
 	pub token: Option<String>, //リモートユーザーは持たない
-	pub host: Option<String>,  //ローカルユーザーは持たない
+	#[diesel(column_name = "isDeleted")]
+	pub is_deleted: bool,
+	pub emojis: Vec<String>,
+	pub host: Option<String>, //ローカルユーザーは持たない
 	#[diesel(column_name = "avatarUrl")]
 	pub avatar_url: Option<String>,
 	#[diesel(column_name = "avatarBlurhash")]
@@ -155,6 +163,11 @@ impl MiUser {
 pub struct MiAvatarDecorations(Vec<MiAvatarDecoration>);
 impl Into<Vec<MiAvatarDecoration>> for MiAvatarDecorations {
 	fn into(self) -> Vec<MiAvatarDecoration> {
+		self.0
+	}
+}
+impl MiAvatarDecorations {
+	pub fn into_inner(self) -> Vec<MiAvatarDecoration> {
 		self.0
 	}
 }

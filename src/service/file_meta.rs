@@ -103,7 +103,7 @@ impl FileMetaService {
 			blurhash: blurhash.ok().unwrap_or_default(),
 			width: size.0,
 			height: size.1,
-			thumbnail: thumbnail.unwrap_or_default(), //todo 生成する
+			thumbnail: thumbnail.unwrap_or_default(),
 		}
 	}
 	pub async fn ffmpeg_metadata(
