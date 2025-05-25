@@ -8,6 +8,7 @@ use diesel::{
 };
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
+use yojo_art_utils::PgString;
 
 diesel::table! {
 	#[sql_name = "instance"]
@@ -146,6 +147,7 @@ pub struct MiInstance {
 	AsExpression,
 	Serialize,
 	Deserialize,
+	PgString,
 )]
 #[diesel(sql_type = VarChar)]
 pub enum SuspensionState {
@@ -162,25 +164,4 @@ pub enum SuspensionState {
 	#[strum(serialize = "autoSuspendedForNotResponding")]
 	#[serde(rename = "autoSuspendedForNotResponding")]
 	AutoSuspendedForNotResponding,
-}
-impl ToSql<VarChar, diesel::pg::Pg> for SuspensionState
-where
-	String: ToSql<VarChar, diesel::pg::Pg>,
-{
-	fn to_sql<'b>(
-		&'b self,
-		out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>,
-	) -> diesel::serialize::Result {
-		<String as ToSql<VarChar, diesel::pg::Pg>>::to_sql(&self.to_string(), &mut out.reborrow())
-	}
-}
-impl<DB: diesel::backend::Backend> FromSql<VarChar, DB> for SuspensionState
-where
-	String: FromSql<VarChar, DB>,
-{
-	fn from_sql(bytes: DB::RawValue<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-		let v = <String as FromSql<VarChar, DB>>::from_sql(bytes)?;
-		use std::str::FromStr;
-		Ok(Self::from_str(&v).or_else(|e| Err(Box::new(e)))?)
-	}
 }

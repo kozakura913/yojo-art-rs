@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+yojo-art-utils = { path="./utils" }
 tokio-stream = "*"
 tokio = { version = "1.0", features = ["rt-multi-thread","signal","process"] }
 tokio-util = { version = "0.7.8", features = ["io"] }

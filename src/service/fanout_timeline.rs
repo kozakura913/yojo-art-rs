@@ -114,7 +114,7 @@ impl FanoutTimelineService {
 			(Some(since_id), None) => {
 				tl.retain(|id| id > since_id);
 			}
-			(None, None) => {},
+			(None, None) => {}
 		};
 		if ascending {
 			tl.sort_by(|a, b| a.cmp(b));

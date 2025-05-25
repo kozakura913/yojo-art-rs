@@ -7,6 +7,7 @@ use diesel::{
 	sql_types::VarChar,
 };
 use strum_macros::{Display, EnumString};
+use yojo_art_utils::PgString;
 
 diesel::table! {
 	#[sql_name = "announcement"]
@@ -57,7 +58,17 @@ pub struct MiAnnouncement {
 	pub user_id: Option<String>,
 }
 #[derive(
-	PartialEq, Eq, Copy, Clone, EnumString, Display, Default, Debug, FromSqlRow, AsExpression,
+	PartialEq,
+	Eq,
+	Copy,
+	Clone,
+	EnumString,
+	Display,
+	Default,
+	Debug,
+	FromSqlRow,
+	AsExpression,
+	PgString,
 )]
 #[diesel(sql_type = VarChar)]
 pub enum IconType {
@@ -71,29 +82,18 @@ pub enum IconType {
 	#[strum(serialize = "success")]
 	Success,
 }
-impl ToSql<VarChar, diesel::pg::Pg> for IconType
-where
-	String: ToSql<VarChar, diesel::pg::Pg>,
-{
-	fn to_sql<'b>(
-		&'b self,
-		out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>,
-	) -> diesel::serialize::Result {
-		<String as ToSql<VarChar, diesel::pg::Pg>>::to_sql(&self.to_string(), &mut out.reborrow())
-	}
-}
-impl<DB: diesel::backend::Backend> FromSql<VarChar, DB> for IconType
-where
-	String: FromSql<VarChar, DB>,
-{
-	fn from_sql(bytes: DB::RawValue<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-		let v = <String as FromSql<VarChar, DB>>::from_sql(bytes)?;
-		use std::str::FromStr;
-		Self::from_str(&v).or_else(|_| Ok(Self::Info))
-	}
-}
 #[derive(
-	PartialEq, Eq, Copy, Clone, EnumString, Display, Default, Debug, FromSqlRow, AsExpression,
+	PartialEq,
+	Eq,
+	Copy,
+	Clone,
+	EnumString,
+	Display,
+	Default,
+	Debug,
+	FromSqlRow,
+	AsExpression,
+	PgString,
 )]
 #[diesel(sql_type = VarChar)]
 pub enum DisplayType {
@@ -104,25 +104,4 @@ pub enum DisplayType {
 	Banner, // banner ... お知らせページ掲載 + バナー表示
 	#[strum(serialize = "dialog")]
 	Dialog, // dialog ... お知らせページ掲載 + ダイアログ表示
-}
-impl ToSql<VarChar, diesel::pg::Pg> for DisplayType
-where
-	String: ToSql<VarChar, diesel::pg::Pg>,
-{
-	fn to_sql<'b>(
-		&'b self,
-		out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>,
-	) -> diesel::serialize::Result {
-		<String as ToSql<VarChar, diesel::pg::Pg>>::to_sql(&self.to_string(), &mut out.reborrow())
-	}
-}
-impl<DB: diesel::backend::Backend> FromSql<VarChar, DB> for DisplayType
-where
-	String: FromSql<VarChar, DB>,
-{
-	fn from_sql(bytes: DB::RawValue<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-		let v = <String as FromSql<VarChar, DB>>::from_sql(bytes)?;
-		use std::str::FromStr;
-		Self::from_str(&v).or_else(|_| Ok(Self::Normal))
-	}
 }

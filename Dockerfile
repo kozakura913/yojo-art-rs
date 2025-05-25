@@ -4,6 +4,8 @@ ENV CARGO_HOME=/var/cache/cargo
 WORKDIR /app
 COPY avif-decoder_dep ./avif-decoder_dep
 COPY assets ./assets
+COPY utils/src ./utils/src
+COPY utils/Cargo.toml ./utils/Cargo.toml
 COPY src ./src
 COPY Cargo.toml ./Cargo.toml
 RUN --mount=type=cache,target=/var/cache/cargo --mount=type=cache,target=/app/target cargo build --release

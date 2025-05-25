@@ -8,6 +8,7 @@ use diesel::{
 };
 use diesel_async::RunQueryDsl;
 use strum_macros::{Display, EnumString};
+use yojo_art_utils::PgString;
 
 diesel::table! {
 	#[sql_name = "user_profile"]
@@ -43,7 +44,17 @@ pub struct MiUserProfile {
 	pub followers_visibility: Visibility,
 }
 #[derive(
-	PartialEq, Eq, Copy, Clone, EnumString, Display, Default, Debug, FromSqlRow, AsExpression,
+	PartialEq,
+	Eq,
+	Copy,
+	Clone,
+	EnumString,
+	Display,
+	Default,
+	Debug,
+	FromSqlRow,
+	AsExpression,
+	PgString,
 )]
 #[diesel(sql_type = VarChar)]
 pub enum Visibility {
@@ -54,27 +65,6 @@ pub enum Visibility {
 	Followers,
 	#[strum(serialize = "private")]
 	Private,
-}
-impl ToSql<VarChar, diesel::pg::Pg> for Visibility
-where
-	String: ToSql<VarChar, diesel::pg::Pg>,
-{
-	fn to_sql<'b>(
-		&'b self,
-		out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>,
-	) -> diesel::serialize::Result {
-		<String as ToSql<VarChar, diesel::pg::Pg>>::to_sql(&self.to_string(), &mut out.reborrow())
-	}
-}
-impl<DB: diesel::backend::Backend> FromSql<VarChar, DB> for Visibility
-where
-	String: FromSql<VarChar, DB>,
-{
-	fn from_sql(bytes: DB::RawValue<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-		let v = <String as FromSql<VarChar, DB>>::from_sql(bytes)?;
-		use std::str::FromStr;
-		Self::from_str(&v).or_else(|_| Ok(Self::Private))
-	}
 }
 
 impl MiUserProfile {

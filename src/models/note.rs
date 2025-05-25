@@ -3,12 +3,14 @@ use diesel::{
 	FromSqlRow, Selectable,
 	deserialize::FromSql,
 	expression::AsExpression,
-	serialize::{IsNull, ToSql},
-	sql_types::{Jsonb, Nullable, VarChar},
+	serialize::ToSql,
+	sql_types::{Jsonb, VarChar},
 };
 use serde::{Deserialize, Serialize};
+
 use std::collections::HashMap;
 use strum_macros::{Display, EnumString};
+use yojo_art_utils::{PgJson, PgString};
 
 use super::common::SearchableTypes;
 use crate::DBConnection;
@@ -115,7 +117,16 @@ pub struct MiNote {
 	pub reaction_and_user_pair_cache: Vec<String>,
 }
 #[derive(
-	Copy, Clone, EnumString, Display, Debug, FromSqlRow, AsExpression, Serialize, Deserialize,
+	Copy,
+	Clone,
+	EnumString,
+	Display,
+	Debug,
+	FromSqlRow,
+	AsExpression,
+	Serialize,
+	Deserialize,
+	PgString,
 )]
 #[diesel(sql_type = VarChar)]
 pub enum NoteReactionAcceptances {
@@ -132,54 +143,9 @@ pub enum NoteReactionAcceptances {
 	#[serde(rename = "nonSensitiveOnlyForLocalLikeOnlyForRemote")]
 	NonSensitiveOnlyForLocalLikeOnlyForRemote,
 }
-impl ToSql<VarChar, diesel::pg::Pg> for NoteReactionAcceptances
-where
-	String: ToSql<VarChar, diesel::pg::Pg>,
-{
-	fn to_sql<'b>(
-		&'b self,
-		out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>,
-	) -> diesel::serialize::Result {
-		<String as ToSql<VarChar, diesel::pg::Pg>>::to_sql(&self.to_string(), &mut out.reborrow())
-	}
-}
-impl<DB: diesel::backend::Backend> FromSql<VarChar, DB> for NoteReactionAcceptances
-where
-	String: FromSql<VarChar, DB>,
-{
-	fn from_sql(bytes: DB::RawValue<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-		let v = <String as FromSql<VarChar, DB>>::from_sql(bytes)?;
-		use std::str::FromStr;
-		Ok(Self::from_str(&v).or_else(|e| Err(Box::new(e)))?)
-	}
-}
-
-#[derive(Clone, Default, Debug, Serialize, Deserialize, FromSqlRow, AsExpression)]
+#[derive(Clone, Default, Debug, Serialize, Deserialize, FromSqlRow, AsExpression, PgJson)]
 #[diesel(sql_type = Jsonb)]
 pub struct MiReactions(pub HashMap<String, i32>);
-impl ToSql<Jsonb, diesel::pg::Pg> for MiReactions
-where
-	serde_json::Value: ToSql<Jsonb, diesel::pg::Pg>,
-{
-	fn to_sql<'b>(
-		&'b self,
-		out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>,
-	) -> diesel::serialize::Result {
-		<serde_json::Value as ToSql<Jsonb, diesel::pg::Pg>>::to_sql(
-			&(serde_json::to_value(&self).map_err(|e| Box::new(e))?),
-			&mut out.reborrow(),
-		)
-	}
-}
-impl<DB: diesel::backend::Backend> FromSql<Jsonb, DB> for MiReactions
-where
-	serde_json::Value: FromSql<Jsonb, DB>,
-{
-	fn from_sql(bytes: DB::RawValue<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-		let v = <serde_json::Value as FromSql<Jsonb, DB>>::from_sql(bytes)?;
-		Ok(serde_json::from_str::<Self>(&v.to_string()).map_err(|e| Box::new(e))?)
-	}
-}
 #[derive(
 	Copy,
 	Clone,
@@ -193,6 +159,7 @@ where
 	AsExpression,
 	Serialize,
 	Deserialize,
+	PgString,
 )]
 #[diesel(sql_type = VarChar)]
 pub enum NoteVisibility {
@@ -213,27 +180,6 @@ pub enum NoteVisibility {
 	#[serde(rename = "specified")]
 	/** visibleUserIds で指定したユーザーのみ */
 	Specified,
-}
-impl ToSql<VarChar, diesel::pg::Pg> for NoteVisibility
-where
-	String: ToSql<VarChar, diesel::pg::Pg>,
-{
-	fn to_sql<'b>(
-		&'b self,
-		out: &mut diesel::serialize::Output<'b, '_, diesel::pg::Pg>,
-	) -> diesel::serialize::Result {
-		<String as ToSql<VarChar, diesel::pg::Pg>>::to_sql(&self.to_string(), &mut out.reborrow())
-	}
-}
-impl<DB: diesel::backend::Backend> FromSql<VarChar, DB> for NoteVisibility
-where
-	String: FromSql<VarChar, DB>,
-{
-	fn from_sql(bytes: DB::RawValue<'_>) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-		let v = <String as FromSql<VarChar, DB>>::from_sql(bytes)?;
-		use std::str::FromStr;
-		Ok(Self::from_str(&v).or_else(|e| Err(Box::new(e)))?)
-	}
 }
 impl MiNote {
 	pub async fn load_by_id(
