@@ -84,11 +84,9 @@ impl NoteService {
 			}
 			None => None,
 		};
-		let clipped_count = note.clipped_count;
 		let mut packed_note = self.pack(con, note, me_id, user_cache).await?;
 		packed_note.renote = renote;
 		packed_note.reply = reply;
-		packed_note.clipped_count = Some(clipped_count);
 		Ok(packed_note)
 	}
 	pub async fn pack(
@@ -111,22 +109,9 @@ impl NoteService {
 		} else {
 			None
 		};
-		let mut reaction_count = 0;
 		let mut reactions = note.reactions;
-		reactions.0 = {
-			let mut map = HashMap::new();
-			for (k, v) in reactions
-				.0
-				.into_iter()
-				.filter(|(_, count)| count.is_positive())
-			{
-				map.insert(k, v);
-			}
-			map
-		};
-		for count in reactions.0.values() {
-			reaction_count += *count;
-		}
+		reactions.0.retain(|_, count| count.is_positive());
+		let reaction_count = reactions.0.values().fold(0, |a, b| a + *b);
 		let reaction_emoji_names = reactions
 			.0
 			.keys()
@@ -238,9 +223,9 @@ impl NoteService {
 				Some(note.mentions)
 			},
 			id: note.id,
-			clipped_count: None, //pack_detailで埋める
-			reply: None,         //pack_detailで埋める
-			renote: None,        //pack_detailで埋める
+			clipped_count: note.clipped_count,
+			reply: None,  //pack_detailで埋める
+			renote: None, //pack_detailで埋める
 		};
 		self.treat_visibility(&mut packed_note)?;
 		Ok(packed_note)
@@ -329,8 +314,7 @@ pub struct PackedNote {
 	#[serde(skip_serializing_if = "Option::is_none")]
 	mentions: Option<Vec<String>>,
 	#[serde(rename = "clippedCount")]
-	#[serde(skip_serializing_if = "Option::is_none")]
-	clipped_count: Option<i16>,
+	clipped_count: i16,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	reply: Option<Box<PackedNote>>,
 	#[serde(skip_serializing_if = "Option::is_none")]
