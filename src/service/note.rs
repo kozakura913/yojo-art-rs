@@ -1,15 +1,16 @@
 use std::{collections::HashMap, sync::Arc};
 
-use chrono::{SecondsFormat, Utc};
+use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	DBConnection, DataBase, MisskeyConfig, ServerError,
+	DBConnection, DBConnectionRef, DataBase, MisskeyConfig, ServerError,
 	models::{
 		self,
 		common::SearchableTypes,
 		drive_file::{FileProperties, MiDriveFile},
 		drive_folder::MiDriveFolder,
+		event::{EventMetadata, MiEvent},
 		note::{MiNote, MiReactions, NoteReactionAcceptances, NoteVisibility},
 		user::MiUser,
 		user_profile::MiUserProfile,
@@ -171,23 +172,18 @@ impl NoteService {
 			.emoji_service
 			.populate_emojis(con, reaction_emoji_names, user.host.clone())
 			.await;
+		let event = self.populate_event(con.into(), &note.id).await;
 		let user = self.user_service.pack_lite(user.clone()).await?;
 		let mut packed_note = PackedNote {
-			created_at: self
-				.id_service
-				.parse(&note.id)
-				.ok_or("")?
-				.to_rfc3339_opts(SecondsFormat::Millis, true),
-			updated_at: note
-				.updated_at
-				.as_ref()
-				.map(|time| time.and_utc().to_rfc3339_opts(SecondsFormat::Millis, true)),
+			created_at: self.id_service.parse(&note.id).ok_or("parse id")?,
+			updated_at: note.updated_at.as_ref().map(|time| time.and_utc()),
 			updated_at_history: note.updated_at_history.as_ref().map(|v| {
 				use std::iter::Iterator;
 				v.iter()
-					.map(|time| time.and_utc().to_rfc3339_opts(SecondsFormat::Millis, true))
-					.collect::<Vec<String>>()
+					.map(|time| time.and_utc())
+					.collect::<Vec<DateTime<Utc>>>()
 			}),
+			delete_at: note.delete_at.as_ref().map(|time| time.and_utc()),
 			user,
 			user_id: note.user_id,
 			cw: note.cw,
@@ -226,9 +222,42 @@ impl NoteService {
 			clipped_count: note.clipped_count,
 			reply: None,  //pack_detailで埋める
 			renote: None, //pack_detailで埋める
+			event,
 		};
 		self.treat_visibility(&mut packed_note)?;
 		Ok(packed_note)
+	}
+	pub async fn populate_event(
+		&self,
+		con: DBConnectionRef<'_, '_>,
+		note_id: &String,
+	) -> Option<PackedEvent> {
+		let event: MiEvent = {
+			use crate::models::event::event::dsl::event;
+			use crate::models::event::event::dsl::noteId;
+			use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
+			use diesel_async::RunQueryDsl;
+			let query = event
+				.filter(noteId.eq(note_id))
+				.select(MiEvent::as_select());
+			match con {
+				DBConnectionRef::Borrowed(con) => query.first(con).await,
+				DBConnectionRef::Mutex(m) => {
+					let mut con = m.lock().await;
+					query.first(&mut con).await
+				}
+			}
+			.map_err(|e| {
+				eprintln!("{}:{} {:?}", file!(), line!(), e);
+			})
+			.ok()
+		}?;
+		Some(PackedEvent {
+			title: event.title,
+			start: event.start.and_utc(),
+			end: event.end.map(|t| t.and_utc()),
+			metadata: event.metadata,
+		})
 	}
 	pub fn treat_visibility(&self, packed_note: &mut PackedNote) -> Result<(), ServerError> {
 		use NoteVisibility::*;
@@ -264,15 +293,16 @@ impl NoteService {
 pub struct PackedNote {
 	id: String,
 	#[serde(rename = "createdAt")]
-	created_at: String,
+	created_at: DateTime<Utc>,
 	#[serde(rename = "updatedAt")]
 	#[serde(skip_serializing_if = "Option::is_none")]
-	updated_at: Option<String>,
+	updated_at: Option<DateTime<Utc>>,
 	#[serde(rename = "updatedAtHistory")]
 	#[serde(skip_serializing_if = "Option::is_none")]
-	updated_at_history: Option<Vec<String>>,
+	updated_at_history: Option<Vec<DateTime<Utc>>>,
 	//noteEditHistory
-	//deleteAt
+	#[serde(rename = "deleteAt")]
+	delete_at: Option<DateTime<Utc>>,
 	user: PackedUserLite,
 	#[serde(rename = "userId")]
 	user_id: String,
@@ -319,7 +349,16 @@ pub struct PackedNote {
 	reply: Option<Box<PackedNote>>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	renote: Option<Box<PackedNote>>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	event: Option<PackedEvent>,
 	//poll
 	//event
 	//myReaction
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PackedEvent {
+	title: String,
+	start: DateTime<Utc>,
+	end: Option<DateTime<Utc>>,
+	metadata: EventMetadata,
 }

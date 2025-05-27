@@ -23,6 +23,7 @@ diesel::table! {
 		id -> VarChar,
 		updatedAt -> Nullable<Timestamp>,
 		updatedAtHistory -> Nullable<Array<Timestamp>>,
+		deleteAt -> Nullable<Timestamp>,
 		noteEditHistory -> Array<VarChar>,
 		replyId -> Nullable<VarChar>,
 		renoteId -> Nullable<VarChar>,
@@ -64,6 +65,8 @@ pub struct MiNote {
 	pub updated_at: Option<NaiveDateTime>,
 	#[diesel(column_name = "updatedAtHistory")]
 	pub updated_at_history: Option<Vec<NaiveDateTime>>,
+	#[diesel(column_name = "deleteAt")]
+	pub delete_at: Option<NaiveDateTime>,
 	#[diesel(column_name = "noteEditHistory")]
 	pub note_edit_history: Vec<String>,
 	#[diesel(column_name = "replyId")]

@@ -31,7 +31,9 @@ pub async fn post(
 			.fanout_timeline_service
 			.home_tl(user_id, parms.since_id, parms.until_id)
 			.await?;
-		return Ok((StatusCode::OK, serde_json::to_string(&notes)?).into_response());
+		let mut header = axum::http::header::HeaderMap::new();
+		header.insert("Content-Type", "application/json".parse().unwrap());
+		return Ok((StatusCode::OK, header, serde_json::to_string(&notes)?).into_response());
 	}
 	//TODO 良い感じ
 	Ok((StatusCode::OK, "[]".to_owned()).into_response())

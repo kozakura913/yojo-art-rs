@@ -35,7 +35,7 @@ regex = "1.11.1"
 #http
 axum = { version = "0.7", features = ["ws","http2","multipart"] }
 rust-s3 = { git = "https://github.com/kozakura913/rust-s3" ,branch="with_metadata", default-features = false, features = ["tokio-rustls-tls", "fail-on-err"] }
-reqwest = { version = "0.12", default-features = false , features = ["rustls-tls-webpki-roots", "charset"] }
+reqwest = { version = "0.12", default-features = false , features = ["rustls-tls-native-roots", "charset"] }
 reqwest-websocket = "0.3.0"
 punycode = "0.4.1"
 
