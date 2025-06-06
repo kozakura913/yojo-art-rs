@@ -70,18 +70,42 @@ impl NoteService {
 		note: MiNote,
 		me_id: &String,
 		user_cache: &mut HashMap<String, MiUser>,
+		note_cache: &mut HashMap<String, PackedNote>,
+		note_hint: &HashMap<String, MiNote>,
 	) -> Result<PackedNote, ServerError> {
 		let reply = match note.reply_id.as_ref() {
 			Some(reply_id) => {
-				let reply = MiNote::load_by_id(con, reply_id).await?;
-				Some(Box::new(self.pack(con, reply, me_id, user_cache).await?))
+				let reply = match note_cache.get(reply_id) {
+					Some(note) => note.clone(),
+					None => {
+						let note = match note_hint.get(reply_id) {
+							Some(note) => note.clone(),
+							None => MiNote::load_by_id(con, reply_id).await?,
+						};
+						let packed = self.pack(con, note, me_id, user_cache).await?;
+						note_cache.insert(packed.id.clone(), packed.clone());
+						packed
+					}
+				};
+				Some(Box::new(reply))
 			}
 			None => None,
 		};
 		let renote = match note.renote_id.as_ref() {
 			Some(renote_id) => {
-				let renote = MiNote::load_by_id(con, &renote_id).await?;
-				Some(Box::new(self.pack(con, renote, me_id, user_cache).await?))
+				let renote = match note_cache.get(renote_id) {
+					Some(note) => note.clone(),
+					None => {
+						let note = match note_hint.get(renote_id) {
+							Some(note) => note.clone(),
+							None => MiNote::load_by_id(con, renote_id).await?,
+						};
+						let packed = self.pack(con, note, me_id, user_cache).await?;
+						note_cache.insert(packed.id.clone(), packed.clone());
+						packed
+					}
+				};
+				Some(Box::new(renote))
 			}
 			None => None,
 		};
@@ -90,6 +114,7 @@ impl NoteService {
 		packed_note.reply = reply;
 		Ok(packed_note)
 	}
+	/* renoteとreplyを処理しない */
 	pub async fn pack(
 		&self,
 		con: &mut DBConnection<'_>,
@@ -172,9 +197,9 @@ impl NoteService {
 			.emoji_service
 			.populate_emojis(con, reaction_emoji_names, user.host.clone())
 			.await;
-		let event = if note.has_event{
+		let event = if note.has_event {
 			self.populate_event(con.into(), &note.id).await
-		} else{
+		} else {
 			None
 		};
 		let user = self.user_service.pack_lite(user.clone()).await?;

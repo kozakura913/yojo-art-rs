@@ -84,6 +84,32 @@ pub struct MisskeyConfig {
 	redis_for_timelines: Option<RedisConfig>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ParsedMisskeyConfig {
+	id: String,
+	url: String,
+	proxy_remote_files: bool,
+	media_proxy: Option<String>,
+	remote_proxy: Option<String>,
+	ap_file_base_url: Option<String>,
+	host: String,
+}
+impl From<MisskeyConfig> for ParsedMisskeyConfig {
+	fn from(f: MisskeyConfig) -> Self {
+		let url = reqwest::Url::parse(f.url.as_str()).expect("url parse");
+		let url_string = url.to_string();
+		let host = url.host().expect("bad server url config").to_string();
+		Self {
+			id: f.id,
+			url: url_string,
+			proxy_remote_files: f.proxy_remote_files.unwrap_or(false),
+			media_proxy: f.media_proxy,
+			remote_proxy: f.remote_proxy,
+			ap_file_base_url: f.ap_file_base_url,
+			host,
+		}
+	}
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct S3Config {
 	endpoint: String,
 	bucket: String,
@@ -127,8 +153,7 @@ impl DBConfig {
 pub struct Context {
 	bucket: Box<Bucket>,
 	config: Arc<ConfigFile>,
-	pub misskey_config: Arc<MisskeyConfig>,
-	pub host: String,
+	pub misskey_config: Arc<ParsedMisskeyConfig>,
 	pub redis: MultiplexedConnection,
 	client: reqwest::Client,
 	pub token_service: TokenService,
@@ -231,10 +256,9 @@ fn main() {
 	}
 	let mut misskey_config: MisskeyConfig =
 		serde_yaml::from_reader(std::fs::File::open(&".config/default.yml").unwrap()).unwrap();
-	let url = reqwest::Url::parse(misskey_config.url.as_str()).expect("url parse");
-	misskey_config.url = url.to_string();
-	let host = url.host().expect("bad server url config").to_string();
+	let parsed_misskey_config: ParsedMisskeyConfig = misskey_config.clone().into();
 	let misskey_config = Arc::new(misskey_config);
+	let parsed_misskey_config = Arc::new(parsed_misskey_config);
 	let file_service = FileMetaService::new();
 	let config: ConfigFile =
 		serde_json::from_reader(std::fs::File::open(&config_path).unwrap()).unwrap();
@@ -300,10 +324,10 @@ fn main() {
 		let meta_service = MetaService::new(db.clone());
 		let role_service = RoleService::new(db.clone(), meta_service.clone());
 		let announcement_service = AnnouncementService::new(db.clone());
-		let emoji_service = EmojiService::new(db.clone(), host.clone());
+		let emoji_service = EmojiService::new(db.clone(), parsed_misskey_config.host.clone());
 		let instance_service = InstanceService::new(db.clone(), redis.clone());
 		let user_service = UserService::new(
-			misskey_config.clone(),
+			parsed_misskey_config.clone(),
 			redis.clone(),
 			db.clone(),
 			id_service.clone(),
@@ -338,7 +362,7 @@ fn main() {
 			event_service.clone(),
 		);
 		let fanout_timeline_service = FanoutTimelineService::new(
-			misskey_config.clone(),
+			parsed_misskey_config.clone(),
 			db.clone(),
 			meta_service.clone(),
 			role_service.clone(),
@@ -347,7 +371,6 @@ fn main() {
 			event_service.clone(),
 			note_service.clone(),
 			redis_for_timelines,
-			host.clone(),
 		);
 		let client = reqwest::Client::new();
 
@@ -364,10 +387,9 @@ fn main() {
 			raw_db: db,
 			user_service,
 			meta_service,
-			misskey_config,
+			misskey_config: parsed_misskey_config,
 			note_service,
 			fanout_timeline_service,
-			host,
 		};
 		let http_addr: SocketAddr = arg_tup.config.bind_addr.parse().unwrap();
 		let app = api::endpoints::route(&arg_tup);

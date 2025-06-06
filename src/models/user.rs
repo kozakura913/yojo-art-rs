@@ -145,6 +145,17 @@ impl MiUser {
 			.first(con)
 			.await
 	}
+	pub async fn load_by_ids(
+		con: &mut DBConnection<'_>,
+		user_id: &Vec<String>,
+	) -> Result<Vec<Self>, diesel::result::Error> {
+		use self::user::dsl::user;
+		use self::user::dsl::*;
+		user.filter(id.eq_any(user_id))
+			.select(Self::as_select())
+			.load(con)
+			.await
+	}
 	pub async fn load_by_token(
 		con: &mut DBConnection<'_>,
 		user_token: &str,

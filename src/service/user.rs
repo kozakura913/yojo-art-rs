@@ -1,11 +1,14 @@
-use std::{collections::{HashMap, HashSet}, sync::Arc};
+use std::{
+	collections::{HashMap, HashSet},
+	sync::Arc,
+};
 
 use chrono::Utc;
 use redis::{AsyncCommands, aio::MultiplexedConnection};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	DataBase, MisskeyConfig, ServerError,
+	DataBase, MisskeyConfig, ParsedMisskeyConfig, ServerError,
 	models::{
 		following::MiFollowing,
 		user::{MiAvatarDecoration, MiUser},
@@ -24,7 +27,7 @@ pub const USER_ONLINE_THRESHOLD: i64 = 1000 * 60 * 10; // 10min
 pub const USER_ACTIVE_THRESHOLD: i64 = 1000 * 60 * 60 * 24 * 3; // 3days
 #[derive(Clone, Debug)]
 pub struct UserService {
-	config: Arc<MisskeyConfig>,
+	config: Arc<ParsedMisskeyConfig>,
 	redis: MultiplexedConnection,
 	db: DataBase,
 	id_service: IdService,
@@ -71,7 +74,7 @@ pub struct UserPackOptions {
 }
 impl UserService {
 	pub fn new(
-		config: Arc<MisskeyConfig>,
+		config: Arc<ParsedMisskeyConfig>,
 		redis: MultiplexedConnection,
 		db: DataBase,
 		id_service: IdService,
@@ -409,7 +412,10 @@ impl UserService {
 			"{}identicon/{}@{}",
 			self.config.url,
 			user.username.to_lowercase(),
-			user.host.as_ref().map(|s| s.as_str()).unwrap_or(".")
+			user.host
+				.as_ref()
+				.map(|s| s.as_str())
+				.unwrap_or(self.config.host.as_str())
 		)
 	}
 	pub async fn pack_lite(&self, user: MiUser) -> Result<PackedUserLite, ServerError> {
@@ -431,15 +437,15 @@ impl UserService {
 		};
 		let meta = self.meta_service.load(false).await.ok_or("meta")?;
 		let avatar_decorations = user.avatar_decorations.into_inner();
-		let mut avatar_decoration_ids=HashSet::new();
-		for ad in avatar_decorations.iter(){
+		let mut avatar_decoration_ids = HashSet::new();
+		for ad in avatar_decorations.iter() {
 			avatar_decoration_ids.insert(ad.id.clone());
 		}
-		let avatar_decoration_ids:Vec<String>=avatar_decoration_ids.into_iter().collect();
+		let avatar_decoration_ids: Vec<String> = avatar_decoration_ids.into_iter().collect();
 		let avatar_decoration_urls = async {
 			use crate::models::avatar_decoration::avatar_decoration::dsl::avatar_decoration;
 			use crate::models::avatar_decoration::avatar_decoration::dsl::*;
-			use diesel::{ExpressionMethods, QueryDsl,SelectableHelper};
+			use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
 			use diesel_async::RunQueryDsl;
 			let res: Option<Vec<crate::models::avatar_decoration::MiAvatarDecoration>> =
 				avatar_decoration
@@ -453,7 +459,7 @@ impl UserService {
 					.ok();
 			res.map(|ad| {
 				let mut map = HashMap::new();
-				for ad in ad.into_iter(){
+				for ad in ad.into_iter() {
 					map.insert(ad.id, ad.url);
 				}
 				map
@@ -466,8 +472,9 @@ impl UserService {
 			.map(|raw_avatar_decoration: MiAvatarDecoration| {
 				let mut packed_avatar_decoration: PackedAvatarDecoration =
 					raw_avatar_decoration.into();
-				if let Some(Some(s)) =
-					avatar_decoration_urls.as_ref().map(|map| map.get(&packed_avatar_decoration.id))
+				if let Some(Some(s)) = avatar_decoration_urls
+					.as_ref()
+					.map(|map| map.get(&packed_avatar_decoration.id))
 				{
 					packed_avatar_decoration.url.push_str(s.as_str());
 				}

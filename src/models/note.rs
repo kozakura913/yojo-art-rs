@@ -8,11 +8,11 @@ use diesel::{
 };
 use serde::{Deserialize, Serialize};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use strum_macros::{Display, EnumString};
 use yojo_art_utils::{PgJson, PgString};
 
-use super::common::SearchableTypes;
+use super::{common::SearchableTypes, following::MiFollowing};
 use crate::DBConnection;
 use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
 use diesel_async::RunQueryDsl;
@@ -33,6 +33,7 @@ diesel::table! {
 		name -> Nullable<VarChar>,
 		cw -> Nullable<VarChar>,
 		userId -> VarChar,
+		userHost -> Nullable<VarChar>,
 		localOnly -> Bool,
 		reactionAcceptance -> Nullable<VarChar>,
 		disableRightClick -> Bool,
@@ -82,6 +83,8 @@ pub struct MiNote {
 	pub cw: Option<String>,
 	#[diesel(column_name = "userId")]
 	pub user_id: String,
+	#[diesel(column_name = "userHost")]
+	pub user_host: Option<String>,
 	#[diesel(column_name = "localOnly")]
 	pub local_only: bool,
 	#[diesel(column_name = "reactionAcceptance")]
@@ -118,6 +121,34 @@ pub struct MiNote {
 	pub has_poll: bool,
 	#[diesel(column_name = "reactionAndUserPairCache")]
 	pub reaction_and_user_pair_cache: Vec<String>,
+}
+impl MiNote {
+	pub fn is_visible(&self, user_id: &String, followings: Option<&HashSet<String>>) -> bool {
+		if &self.user_id == user_id {
+			return true;
+		}
+		match self.visibility {
+			NoteVisibility::Public | NoteVisibility::Home => true,
+			NoteVisibility::Followers => {
+				if let Some(set) = followings {
+					set.contains(user_id)
+				} else {
+					false
+				}
+			}
+			NoteVisibility::Specified => self.visible_user_ids.contains(user_id),
+		}
+	}
+	pub fn is_renote(&self) -> bool {
+		self.renote_id.is_some()
+	}
+	pub fn is_quote(&self) -> bool {
+		self.text.is_some()
+			|| self.cw.is_some()
+			|| self.reply_id.is_some()
+			|| self.has_poll
+			|| !self.file_ids.is_empty()
+	}
 }
 #[derive(
 	Copy,
