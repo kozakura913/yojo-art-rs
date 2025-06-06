@@ -1,6 +1,7 @@
 pub mod access_token;
 pub mod announcement;
 pub mod announcement_read;
+pub mod avatar_decoration;
 pub mod blocking;
 pub mod common;
 pub mod drive_file;

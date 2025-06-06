@@ -172,7 +172,11 @@ impl NoteService {
 			.emoji_service
 			.populate_emojis(con, reaction_emoji_names, user.host.clone())
 			.await;
-		let event = self.populate_event(con.into(), &note.id).await;
+		let event = if note.has_event{
+			self.populate_event(con.into(), &note.id).await
+		} else{
+			None
+		};
 		let user = self.user_service.pack_lite(user.clone()).await?;
 		let mut packed_note = PackedNote {
 			created_at: self.id_service.parse(&note.id).ok_or("parse id")?,

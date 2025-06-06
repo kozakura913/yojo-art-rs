@@ -14,6 +14,8 @@ pub struct RequestParams {
 	with_cats: Option<bool>,
 	#[serde(rename = "withRenotes")]
 	with_renotes: Option<bool>,
+	#[serde(rename = "withFiles")]
+	with_files: Option<bool>,
 	#[serde(rename = "untilId")]
 	until_id: Option<String>,
 	#[serde(rename = "sinceId")]
@@ -29,7 +31,13 @@ pub async fn post(
 	if meta.other.enable_fanout_timeline {
 		let notes = ctx
 			.fanout_timeline_service
-			.home_tl(user_id, parms.since_id, parms.until_id)
+			.home_tl(
+				user_id,
+				parms.since_id,
+				parms.until_id,
+				parms.with_files.unwrap_or(false),
+				parms.with_renotes.unwrap_or(false),
+			)
 			.await?;
 		let mut header = axum::http::header::HeaderMap::new();
 		header.insert("Content-Type", "application/json".parse().unwrap());

@@ -13,14 +13,18 @@ use super::{
 	user::UserService,
 };
 pub enum FanoutTimelineName<'a> {
-	Home(&'a String),
+	Home(bool, &'a String),
 	Local,
 }
 impl FanoutTimelineName<'_> {
 	fn to_name(&self, host: impl AsRef<str>) -> String {
 		match self {
-			FanoutTimelineName::Home(user_id) => {
-				format!("{}:list:homeTimeline:{}", host.as_ref(), user_id)
+			FanoutTimelineName::Home(with_files, user_id) => {
+				if *with_files {
+					format!("{}:list:homeTimelineWithFiles:{}", host.as_ref(), user_id)
+				} else {
+					format!("{}:list:homeTimeline:{}", host.as_ref(), user_id)
+				}
 			}
 			FanoutTimelineName::Local => todo!(),
 		}
@@ -70,15 +74,18 @@ impl FanoutTimelineService {
 		user_id: &String,
 		until_id: Option<String>,
 		since_id: Option<String>,
+		with_files: bool,
+		with_renotes: bool,
 	) -> Result<Vec<PackedNote>, ServerError> {
 		let mut con = self.db.get().await.ok_or("db error")?;
 		let mut user_cache = HashMap::new();
 		let notes = self
 			.get_notes(
 				&mut con,
-				&FanoutTimelineName::Home(user_id),
+				&FanoutTimelineName::Home(with_files, user_id),
 				since_id,
 				until_id,
+				with_renotes,
 			)
 			.await?;
 		let mut packed_notes = vec![];
@@ -97,6 +104,7 @@ impl FanoutTimelineService {
 		timeline: &FanoutTimelineName<'_>,
 		until_id: Option<String>,
 		since_id: Option<String>,
+		with_renotes: bool,
 	) -> Result<Vec<MiNote>, ServerError> {
 		let mut tl = self
 			.redis_for_timelines

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::{HashMap, HashSet}, sync::Arc};
 
 use chrono::Utc;
 use redis::{AsyncCommands, aio::MultiplexedConnection};
@@ -430,13 +430,50 @@ impl UserService {
 			None => None,
 		};
 		let meta = self.meta_service.load(false).await.ok_or("meta")?;
-		let avatar_decorations = user
-			.avatar_decorations
-			.into_inner()
+		let avatar_decorations = user.avatar_decorations.into_inner();
+		let mut avatar_decoration_ids=HashSet::new();
+		for ad in avatar_decorations.iter(){
+			avatar_decoration_ids.insert(ad.id.clone());
+		}
+		let avatar_decoration_ids:Vec<String>=avatar_decoration_ids.into_iter().collect();
+		let avatar_decoration_urls = async {
+			use crate::models::avatar_decoration::avatar_decoration::dsl::avatar_decoration;
+			use crate::models::avatar_decoration::avatar_decoration::dsl::*;
+			use diesel::{ExpressionMethods, QueryDsl,SelectableHelper};
+			use diesel_async::RunQueryDsl;
+			let res: Option<Vec<crate::models::avatar_decoration::MiAvatarDecoration>> =
+				avatar_decoration
+					.filter(id.eq_any(&avatar_decoration_ids))
+					.select(crate::models::avatar_decoration::MiAvatarDecoration::as_select())
+					.load(&mut con)
+					.await
+					.map_err(|e| {
+						eprintln!("{}:{} {:?}", file!(), line!(), e);
+					})
+					.ok();
+			res.map(|ad| {
+				let mut map = HashMap::new();
+				for ad in ad.into_iter(){
+					map.insert(ad.id, ad.url);
+				}
+				map
+			})
+		};
+		//DBクエリ
+		let avatar_decoration_urls = avatar_decoration_urls.await;
+		let avatar_decorations = avatar_decorations
 			.into_iter()
-			.map(|n| n.into())
+			.map(|raw_avatar_decoration: MiAvatarDecoration| {
+				let mut packed_avatar_decoration: PackedAvatarDecoration =
+					raw_avatar_decoration.into();
+				if let Some(Some(s)) =
+					avatar_decoration_urls.as_ref().map(|map| map.get(&packed_avatar_decoration.id))
+				{
+					packed_avatar_decoration.url.push_str(s.as_str());
+				}
+				packed_avatar_decoration
+			})
 			.collect();
-		//TODO avatar_decorationsのurlをDBから持ってくる
 		Ok(PackedUserLite {
 			name: user.name,
 			username: user.username,
