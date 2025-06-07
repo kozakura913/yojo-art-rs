@@ -500,6 +500,7 @@ impl Context {
 pub struct DataBase(diesel_async::pooled_connection::bb8::Pool<AsyncPgConnection>);
 pub type DBConnection<'a> =
 	diesel_async::pooled_connection::bb8::PooledConnection<'a, AsyncPgConnection>;
+
 pub enum DBConnectionRef<'a, 'b> {
 	Borrowed(&'b mut DBConnection<'a>),
 	Mutex(Arc<Mutex<&'b mut DBConnection<'a>>>),

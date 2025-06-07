@@ -60,7 +60,7 @@ pub async fn post(
 				.into_response()
 		}
 		Err(e) => {
-			eprintln!("{:?}", e);
+			eprintln!("{}:{} {:?}", file!(), line!(), e);
 			StatusCode::BAD_GATEWAY.into_response()
 		}
 	}
@@ -276,7 +276,7 @@ pub async fn get(
 				.into_response()
 		}
 		Err(e) => {
-			eprintln!("{:?}", e);
+			eprintln!("{}:{} {:?}", file!(), line!(), e);
 			StatusCode::BAD_GATEWAY.into_response()
 		}
 	}
@@ -292,7 +292,7 @@ async fn ws_backend(
 	let mut url = match url {
 		Ok(url) => url,
 		Err(e) => {
-			eprintln!("{:?}", e);
+			eprintln!("{}:{} {:?}", file!(), line!(), e);
 			panic!("URL parse error");
 		}
 	};

@@ -1,12 +1,15 @@
+use chrono::NaiveDateTime;
 use diesel::Selectable;
 
+use super::note::NoteVisibility;
+
 diesel::table! {
-	#[sql_name = "note_reaction"]
-	note_reaction (id) {
+	#[sql_name = "poll_vote"]
+	poll_vote (id) {
 		id -> VarChar,
 		userId -> VarChar,
 		noteId -> VarChar,
-		reaction -> VarChar,
+		choice -> Int4,
 	}
 }
 #[derive(
@@ -19,12 +22,12 @@ diesel::table! {
 	Selectable,
 	diesel::QueryableByName,
 )]
-#[diesel(table_name = note_reaction)]
-pub struct MiNoteReaction {
+#[diesel(table_name = poll_vote)]
+pub struct MiPollVote {
 	pub id: String,
 	#[diesel(column_name = "userId")]
 	pub user_id: String,
 	#[diesel(column_name = "noteId")]
 	pub note_id: String,
-	pub reaction: String,
+	pub choice: i32,
 }

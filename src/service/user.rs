@@ -228,7 +228,7 @@ impl UserService {
 					.first(&mut con)
 					.await
 					.map_err(|e| {
-						eprintln!("{:?}", e);
+						eprintln!("{}:{} {:?}", file!(), line!(), e);
 					})
 			}
 			.ok();
@@ -244,7 +244,7 @@ impl UserService {
 				.first(&mut con)
 				.await
 				.map_err(|e| {
-					eprintln!("{:?}", e);
+					eprintln!("{}:{} {:?}", file!(), line!(), e);
 				})
 				.ok();
 			res.is_some()
@@ -259,7 +259,7 @@ impl UserService {
 				.first(&mut con)
 				.await
 				.map_err(|e| {
-					eprintln!("{:?}", e);
+					eprintln!("{}:{} {:?}", file!(), line!(), e);
 				})
 				.ok();
 			res.is_some()
@@ -274,7 +274,7 @@ impl UserService {
 				.first(&mut con)
 				.await
 				.map_err(|e| {
-					eprintln!("{:?}", e);
+					eprintln!("{}:{} {:?}", file!(), line!(), e);
 				})
 				.ok();
 			res.is_some()
@@ -289,7 +289,7 @@ impl UserService {
 				.first(&mut con)
 				.await
 				.map_err(|e| {
-					eprintln!("{:?}", e);
+					eprintln!("{}:{} {:?}", file!(), line!(), e);
 				})
 				.ok();
 			res.is_some()
@@ -304,7 +304,7 @@ impl UserService {
 				.first(&mut con)
 				.await
 				.map_err(|e| {
-					eprintln!("{:?}", e);
+					eprintln!("{}:{} {:?}", file!(), line!(), e);
 				})
 				.ok();
 			res.is_some()
@@ -319,7 +319,7 @@ impl UserService {
 				.first(&mut con)
 				.await
 				.map_err(|e| {
-					eprintln!("{:?}", e);
+					eprintln!("{}:{} {:?}", file!(), line!(), e);
 				})
 				.ok();
 			res.is_some()
@@ -334,7 +334,7 @@ impl UserService {
 				.first(&mut con)
 				.await
 				.map_err(|e| {
-					eprintln!("{:?}", e);
+					eprintln!("{}:{} {:?}", file!(), line!(), e);
 				})
 				.ok();
 			res.is_some()
@@ -425,7 +425,7 @@ impl UserService {
 		} else {
 			user.avatar_url.unwrap()
 		};
-		println!("avatar_decorations={:?}", user.avatar_decorations);
+		//println!("avatar_decorations={:?}", user.avatar_decorations);
 		let mut con = self.db.get().await.ok_or("db")?;
 		let instance = match user.host.as_ref() {
 			Some(host) => Some(

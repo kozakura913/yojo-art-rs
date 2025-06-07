@@ -29,7 +29,7 @@ impl AnnouncementService {
 			.load(&mut con)
 			.await
 			.map_err(|e| {
-				eprintln!("{:?}", e);
+				eprintln!("{}:{} {:?}", file!(), line!(), e);
 			})
 			.ok();
 		res

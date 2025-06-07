@@ -40,7 +40,7 @@ impl MiUserNotePining {
 				.load(con)
 				.await
 				.map_err(|e| {
-					eprintln!("{:?}", e);
+					eprintln!("{}:{} {:?}", file!(), line!(), e);
 				})
 		}
 		.ok()?;

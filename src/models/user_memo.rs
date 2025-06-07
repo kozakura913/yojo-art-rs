@@ -46,7 +46,7 @@ impl MiUserMemo {
 				.first(con)
 				.await
 				.map_err(|e| {
-					eprintln!("{:?}", e);
+					eprintln!("{}:{} {:?}", file!(), line!(), e);
 				})
 		}
 		.ok()?;

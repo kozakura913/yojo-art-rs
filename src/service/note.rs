@@ -13,6 +13,8 @@ use crate::{
 		event::{EventMetadata, MiEvent},
 		note::{MiNote, MiReactions, NoteReactionAcceptances, NoteVisibility},
 		note_reaction::MiNoteReaction,
+		poll::MiPoll,
+		poll_vote::MiPollVote,
 		user::MiUser,
 		user_profile::MiUserProfile,
 	},
@@ -205,14 +207,19 @@ impl NoteService {
 			.populate_emojis(con, reaction_emoji_names, user.host.clone())
 			.await;
 		let event = if note.has_event {
-			self.populate_event(con.into(), &note.id).await
+			self.populate_event(&mut con.into(), &note.id).await
+		} else {
+			None
+		};
+		let poll = if note.has_poll {
+			self.populate_poll(&mut con.into(), &note.id, Some(me_id))
+				.await
 		} else {
 			None
 		};
 		let user = self.user_service.pack_lite(user.clone()).await?;
 		let created_at = self.id_service.parse(&note.id).ok_or("parse id")?;
 		let my_reaction = if reaction_count < 1 {
-			println!("my reactions skip no reaction");
 			None
 		} else if reaction_count as usize <= note.reaction_and_user_pair_cache.len() {
 			let mut reactions: Vec<String> = Vec::new();
@@ -223,13 +230,10 @@ impl NoteService {
 				let mut split = cache.split('/');
 				split.next(); //user_id
 				if let Some(src) = split.next() {
-					println!("my reactions cache raw {:?}", src);
 					let parsed = self.emoji_service.normalize_reaction(src.to_owned());
-					println!("my reactions cache parsed {:?}", parsed);
 					reactions.push(parsed);
 				}
 			}
-			println!("my reactions from cache {:?}", reactions);
 			reactions.into_iter().next()
 		} else {
 			// 作成直後はリアクションが無いと思われるのでコストの高いDBクエリしない
@@ -304,14 +308,95 @@ impl NoteService {
 			reply: None,  //pack_detailで埋める
 			renote: None, //pack_detailで埋める
 			event,
+			poll,
 			my_reaction,
 		};
 		self.treat_visibility(&mut packed_note)?;
 		Ok(packed_note)
 	}
+	pub async fn populate_poll(
+		&self,
+		con: &mut DBConnectionRef<'_, '_>,
+		note_id: &String,
+		me_id: Option<&String>,
+	) -> Option<PackedPoll> {
+		let mi_poll: MiPoll = {
+			use crate::models::poll::poll::dsl::noteId;
+			use crate::models::poll::poll::dsl::poll;
+			use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
+			use diesel_async::RunQueryDsl;
+			let query = poll.filter(noteId.eq(note_id)).select(MiPoll::as_select());
+			match con {
+				DBConnectionRef::Borrowed(con) => query.first(*con).await,
+				DBConnectionRef::Mutex(m) => {
+					let mut con = m.lock().await;
+					query.first(&mut con).await
+				}
+			}
+			.map_err(|e| {
+				eprintln!("{}:{} {:?}", file!(), line!(), e);
+			})
+			.ok()
+		}?;
+		let mut choices: Vec<PackedPollChoices> = mi_poll
+			.choices
+			.into_iter()
+			.zip(mi_poll.votes.into_iter())
+			.map(|(text, votes)| PackedPollChoices {
+				text,
+				votes,
+				is_voted: false,
+			})
+			.collect();
+		if let Some(me_id) = me_id {
+			let total = choices.iter().fold(0, |count, c| count + c.votes);
+			let votes: Option<Vec<MiPollVote>> = if total <= 0 {
+				None
+			} else {
+				use crate::models::poll_vote::poll_vote::dsl::poll_vote;
+				use crate::models::poll_vote::poll_vote::dsl::{noteId, userId};
+				use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
+				use diesel_async::RunQueryDsl;
+				let query = poll_vote
+					.filter(noteId.eq(note_id))
+					.filter(userId.eq(me_id))
+					.select(MiPollVote::as_select());
+				match con {
+					DBConnectionRef::Borrowed(con) => query.load(con).await,
+					DBConnectionRef::Mutex(m) => {
+						let mut con = m.lock().await;
+						query.load(&mut con).await
+					}
+				}
+				.map_err(|e| {
+					eprintln!("{}:{} {:?}", file!(), line!(), e);
+				})
+				.ok()
+			};
+			if let Some(mut votes) = votes {
+				if !mi_poll.multiple {
+					votes.truncate(1);
+				}
+				if !votes.is_empty() {
+					for choice in votes.into_iter().map(|v| v.choice) {
+						if choice > 0 {
+							if let Some(c) = choices.get_mut(choice as usize) {
+								c.is_voted = true;
+							}
+						}
+					}
+				}
+			}
+		}
+		Some(PackedPoll {
+			multiple: mi_poll.multiple,
+			expires_at: mi_poll.expires_at.map(|t| t.and_utc()),
+			choices,
+		})
+	}
 	pub async fn populate_event(
 		&self,
-		con: DBConnectionRef<'_, '_>,
+		con: &mut DBConnectionRef<'_, '_>,
 		note_id: &String,
 	) -> Option<PackedEvent> {
 		let event: MiEvent = {
@@ -433,7 +518,7 @@ pub struct PackedNote {
 	renote: Option<Box<PackedNote>>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	event: Option<PackedEvent>,
-	//poll
+	poll: Option<PackedPoll>,
 	#[serde(rename = "myReaction")]
 	#[serde(skip_serializing_if = "Option::is_none")]
 	my_reaction: Option<String>,
@@ -444,4 +529,18 @@ pub struct PackedEvent {
 	start: DateTime<Utc>,
 	end: Option<DateTime<Utc>>,
 	metadata: EventMetadata,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PackedPoll {
+	multiple: bool,
+	#[serde(rename = "expiresAt")]
+	expires_at: Option<DateTime<Utc>>,
+	choices: Vec<PackedPollChoices>,
+}
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PackedPollChoices {
+	text: String,
+	votes: i32,
+	#[serde(rename = "isVoted")]
+	is_voted: bool,
 }

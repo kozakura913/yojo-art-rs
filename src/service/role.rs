@@ -73,7 +73,7 @@ impl RoleService {
 				.load(&mut con)
 				.await
 				.map_err(|e| {
-					eprintln!("{:?}", e);
+					eprintln!("{}:{} {:?}", file!(), line!(), e);
 				})
 		}
 		.ok()?;
@@ -106,7 +106,7 @@ impl RoleService {
 				.load(&mut con)
 				.await
 				.map_err(|e| {
-					eprintln!("{:?}", e);
+					eprintln!("{}:{} {:?}", file!(), line!(), e);
 				})
 		}
 		.ok()?;
