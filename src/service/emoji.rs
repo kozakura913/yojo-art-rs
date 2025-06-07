@@ -1,28 +1,24 @@
 use std::{borrow::Cow, collections::HashMap, sync::Arc, time::Duration};
 
-use chrono::{SecondsFormat, Utc};
 use memory_cache::MemoryCache;
-use serde::{Deserialize, Serialize};
 use tokio::sync::{Mutex, RwLock};
 
-use crate::{
-	DBConnection, DBConnectionRef, DataBase, MisskeyConfig, ServerError,
-	models::{
-		self,
-		common::SearchableTypes,
-		drive_file::{FileProperties, MiDriveFile},
-		drive_folder::MiDriveFolder,
-		emoji::MiEmoji,
-		note::{MiNote, MiReactions, NoteReactionAcceptances, NoteVisibility},
-		user::MiUser,
-		user_profile::MiUserProfile,
-	},
-	service::event::{DriveEventType, MainEventType},
-};
+use crate::{DBConnection, DBConnectionRef, DataBase, models::emoji::MiEmoji};
 #[derive(Clone, Debug)]
 pub struct ParsedEmoji {
 	name: Option<String>,
 	host: Option<String>,
+}
+impl TryInto<String> for &ParsedEmoji {
+	type Error = ();
+
+	fn try_into(self) -> Result<String, Self::Error> {
+		match (self.name.as_ref(), self.host.as_ref()) {
+			(None, _) => Err(()),
+			(Some(name), None) => Ok(format!("{}@.", name)),
+			(Some(name), Some(host)) => Ok(format!("{}@{}", name, host)),
+		}
+	}
 }
 #[derive(Clone)]
 pub struct EmojiService {
@@ -88,14 +84,13 @@ impl EmojiService {
 		user_host: Option<String>,
 	) -> Option<String> {
 		let parsed = self.parse_emoji_str(&emoji, user_host);
-		let name = parsed.name?;
-		let host = parsed.host?;
-		let key = format!("{name} {host}");
+		let name = parsed.name.as_ref()?;
+		let host = parsed.host.as_ref()?;
+		let key: String = (&parsed).try_into().ok()?;
 		let emoji = {
 			let rl = self.cache.read().await;
 			rl.get(&key).cloned()
 		};
-		println!("cache hit:{:?}", emoji);
 		let emoji = match emoji {
 			Some(cache_hit) => cache_hit,
 			None => {
@@ -131,21 +126,37 @@ impl EmojiService {
 			Some(emoji.public_url)
 		}
 	}
-	pub fn parse_emoji_str(
-		&self,
-		mut emoji_name: &str,
-		note_user_host: Option<String>,
-	) -> ParsedEmoji {
+	pub fn normalize_reaction(&self, reaction: String) -> String {
+		//reaction=":foo:"
+		//reaction=":foo@example.com:"
+		//reaction="🍮"
+		if reaction.starts_with(":") && reaction.ends_with(":") {
+			if reaction.contains("@") {
+				let emoji = self.parse_emoji_str(&reaction[1..reaction.len() - 1], None);
+				if let Ok(emoji) = TryInto::<String>::try_into(&emoji) {
+					format!(":{}:", emoji)
+				} else {
+					reaction
+				}
+			} else {
+				//hostが無い時はmatchする必要が無い
+				format!(":{}@.:", &reaction[1..reaction.len() - 1])
+			}
+		} else {
+			reaction
+		}
+	}
+	pub fn parse_emoji_str(&self, emoji_name: &str, note_user_host: Option<String>) -> ParsedEmoji {
 		let find = self.parse_emoji_str_regexp.find(emoji_name);
 		match find {
 			Some(m) => {
 				let mut split = m.as_str().split("@");
 				ParsedEmoji {
 					name: split.next().map(|s| s.to_owned()),
-					host: split
-						.next()
-						.map(|s| self.normalize_host(Some(s), note_user_host))
-						.unwrap_or_default(),
+					host: match split.next() {
+						Some(s) => self.normalize_host(Some(s), note_user_host),
+						None => note_user_host.as_ref().map(|s| to_puny_code(&s)),
+					},
 				}
 			}
 			None => ParsedEmoji {
@@ -203,6 +214,11 @@ fn test_to_puny_code() {
 		to_puny_code("foo.ドメイン名例.jp"),
 		"foo.xn--eckwd4c7cu47r2wf.jp".to_owned()
 	);
+	assert_eq!(
+		to_puny_code("exampleドメイン名例foo.jp"),
+		"xn--examplefoo-qx4ixo7jviu903bscp.jp".to_owned()
+	);
+	assert_eq!(to_puny_code("example.com"), "example.com".to_owned());
 }
 #[test]
 fn test_parse_emoji_str_regexp() {

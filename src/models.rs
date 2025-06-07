@@ -14,6 +14,7 @@ pub mod instance;
 pub mod meta;
 pub mod muting;
 pub mod note;
+pub mod note_reaction;
 pub mod renote_muting;
 pub mod role;
 pub mod user;

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use chrono::{DateTime, SecondsFormat, Utc};
+use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -12,6 +12,7 @@ use crate::{
 		drive_folder::MiDriveFolder,
 		event::{EventMetadata, MiEvent},
 		note::{MiNote, MiReactions, NoteReactionAcceptances, NoteVisibility},
+		note_reaction::MiNoteReaction,
 		user::MiUser,
 		user_profile::MiUserProfile,
 	},
@@ -152,6 +153,12 @@ impl NoteService {
 				emoji_name.to_owned()
 			})
 			.collect();
+		let un_normalize_reactions = reactions;
+		let mut reactions = MiReactions(HashMap::new());
+		for (k, v) in un_normalize_reactions.0.into_iter() {
+			let k = self.emoji_service.normalize_reaction(k);
+			reactions.0.insert(k, v);
+		}
 		let files = {
 			let files: Vec<MiDriveFile> = {
 				use crate::models::drive_file::drive_file::dsl::drive_file;
@@ -203,8 +210,53 @@ impl NoteService {
 			None
 		};
 		let user = self.user_service.pack_lite(user.clone()).await?;
+		let created_at = self.id_service.parse(&note.id).ok_or("parse id")?;
+		let my_reaction = if reaction_count < 1 {
+			println!("my reactions skip no reaction");
+			None
+		} else if reaction_count as usize <= note.reaction_and_user_pair_cache.len() {
+			let mut reactions: Vec<String> = Vec::new();
+			for cache in note.reaction_and_user_pair_cache.iter() {
+				if !cache.starts_with(me_id) {
+					continue;
+				}
+				let mut split = cache.split('/');
+				split.next(); //user_id
+				if let Some(src) = split.next() {
+					println!("my reactions cache raw {:?}", src);
+					let parsed = self.emoji_service.normalize_reaction(src.to_owned());
+					println!("my reactions cache parsed {:?}", parsed);
+					reactions.push(parsed);
+				}
+			}
+			println!("my reactions from cache {:?}", reactions);
+			reactions.into_iter().next()
+		} else {
+			// 作成直後はリアクションが無いと思われるのでコストの高いDBクエリしない
+			if created_at > Utc::now() - Duration::seconds(2) {
+				None
+			} else {
+				let reactions: Vec<MiNoteReaction> = {
+					use crate::models::note_reaction::note_reaction::dsl::note_reaction;
+					use crate::models::note_reaction::note_reaction::dsl::*;
+					use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
+					use diesel_async::RunQueryDsl;
+					note_reaction
+						.filter(noteId.eq(&note.id))
+						.filter(userId.eq(&me_id))
+						.select(MiNoteReaction::as_select())
+						.load(con)
+						.await
+				}?;
+				let reactions: Vec<String> =
+					reactions.into_iter().map(|react| react.reaction).collect();
+				println!("my reactions from db {:?}", reactions);
+				let emoji = reactions.into_iter().next();
+				emoji.map(|src| self.emoji_service.normalize_reaction(src))
+			}
+		};
 		let mut packed_note = PackedNote {
-			created_at: self.id_service.parse(&note.id).ok_or("parse id")?,
+			created_at,
 			updated_at: note.updated_at.as_ref().map(|time| time.and_utc()),
 			updated_at_history: note.updated_at_history.as_ref().map(|v| {
 				use std::iter::Iterator;
@@ -252,6 +304,7 @@ impl NoteService {
 			reply: None,  //pack_detailで埋める
 			renote: None, //pack_detailで埋める
 			event,
+			my_reaction,
 		};
 		self.treat_visibility(&mut packed_note)?;
 		Ok(packed_note)
@@ -381,8 +434,9 @@ pub struct PackedNote {
 	#[serde(skip_serializing_if = "Option::is_none")]
 	event: Option<PackedEvent>,
 	//poll
-	//event
-	//myReaction
+	#[serde(rename = "myReaction")]
+	#[serde(skip_serializing_if = "Option::is_none")]
+	my_reaction: Option<String>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PackedEvent {
