@@ -5,12 +5,8 @@ fn main() {
 }
 const BASE_URL:&'static str="http://localhost:3001/api";
 #[test]
-fn tl(){
-	let resp=api_post("/signup",serde_json::json!({
-		"username": uuid::Uuid::new_v4().to_string().replace("-",""),
-		"password": "a",
-	}));
-	let token=resp.get("token").unwrap().as_str().unwrap();
+fn timeline(){
+	let (_,token)=signup();
 	let resp=api_post("/notes/timeline",serde_json::json!({
 		"withRenotes": true,
 		"withCats": false,
@@ -18,7 +14,20 @@ fn tl(){
 		"allowPartial": true,
 		"i": token,
 	}));
+	//
 	assert!(resp.is_array(),"{:?}", resp);
+}
+fn signup()->(String,String){
+	let mut rng = rand::rng();
+	use rand::distr::SampleString;
+	let username = rand::distr::Alphanumeric.sample_string(&mut rng, 16);
+	let password = rand::distr::Alphanumeric.sample_string(&mut rng, 16);
+	let resp=api_post("/signup",serde_json::json!({
+		"username": &username,
+		"password": password,
+	}));
+	let token=resp.get("token").unwrap().as_str().unwrap().to_owned();
+	(username,token)
 }
 fn api_post(endpoint:&str,req_body:serde_json::Value)->serde_json::Value{
 	api_post_with_opt(endpoint, req_body, Default::default())
