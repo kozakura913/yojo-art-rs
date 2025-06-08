@@ -54,6 +54,7 @@ jobs:
       - name: clone cherrypick
         run: |
           git clone --recursive https://github.com/yojo-art/cherrypick.git
+          cd cherrypick
           git checkout master
           git submodule update --init
           cp pnpm-lock.yml ../
