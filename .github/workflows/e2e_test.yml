@@ -9,11 +9,11 @@ on:
   schedule:
     - cron: '00 25 * * *'
   push:
-    branches: [ "develop","master" ]
+    branches: [ "develop","master","e2e-wip" ]
     # Publish semver tags as releases.
     tags: [ 'v*.*.*' ]
   pull_request:
-    branches: [ "develop","master" ]
+    branches: [ "develop","master","e2e-wip" ]
 
 jobs:
   e2e-test:
