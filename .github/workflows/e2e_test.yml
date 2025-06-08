@@ -51,48 +51,46 @@ jobs:
 
       - name: Build App
         run: cargo build --release
+      - name: clone cherrypick
+        run: |
+          git clone --recursive https://github.com/yojo-art/cherrypick.git
+          git checkout master
+          git submodule update --init
       - name: Install pnpm
+        working-directory: ${{github.workspace}}/cherrypick
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - name: Use Node.js
+        working-directory: ${{github.workspace}}/cherrypick
         uses: actions/setup-node@v4.2.0
         with:
           node-version: 22.11.0
           cache: 'pnpm'
-      - name: clone cherrypick
+      - name: init cherrypick
+        working-directory: ${{github.workspace}}/cherrypick
         run: |
-          cd ${{github.workspace}}
-          git clone --recursive https://github.com/yojo-art/cherrypick.git
-          cd ${{github.workspace}}/cherrypick
-          git checkout master
-          git submodule update --init
           corepack enable
           pnpm i --frozen-lockfile
       - name: Build Cherrypick
+        working-directory: ${{github.workspace}}/cherrypick
         run: |
-          cd ${{github.workspace}}/cherrypick
           NODE_ENV=production pnpm build
       - name: Run Cherrypick
+        working-directory: ${{github.workspace}}/cherrypick
         run: |
-          cd ${{github.workspace}}/cherrypick
           pnpm run init
           NODE_ENV=production pnpm run start
 
       - name: Run App
-        run: cd ${{github.workspace}} && ./target/release/yojo-art-rs &
+        run: ./target/release/yojo-art-rs &
       - name: Build Test
-        run: |
-          cd ${{github.workspace}}/e2e-test
-          cargo test build
+        working-directory: ${{github.workspace}}/e2e-test
+        run: cargo test build
       - name: Sleep
-        run: |
-          sleep 10
+        run: sleep 10
       - name: Check App Running
         run: |
           export RUNNING_APP=$(ls -l /proc/*/exe 2>&1 | awk {'print $11'} | grep yojo-art-rs)
           test -n $RUNNING_APP
       - name: Run Test
-        run: |
-          cd ${{github.workspace}}/e2e-test
-          cargo test
+        working-directory: ${{github.workspace}}/e2e-test
+        run: cargo test
