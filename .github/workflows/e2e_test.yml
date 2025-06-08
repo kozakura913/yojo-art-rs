@@ -54,7 +54,7 @@ jobs:
       - name: Build App
         run: cargo build --release --verbose
       - name: Run App
-        run: cargo run --release --verbose &
+        run: cd ${{github.workspace}} && ./target/release/yojo-art-rs &
       - name: Build Test
         run: |
           cd ${{github.workspace}}/e2e-test
@@ -62,6 +62,9 @@ jobs:
       - name: Sleep
         run: |
           sleep 10
+      - name: Check App Running
+        run: |
+          test -n $(ls -l /proc/*/exe 2>&1 | awk {'print $11'} | grep yojo-art-rs)
       - name: Run Test
         run: |
           cd ${{github.workspace}}/e2e-test
