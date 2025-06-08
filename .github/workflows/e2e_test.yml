@@ -48,11 +48,35 @@ jobs:
         run: |
           mkdir ${{github.workspace}}/.config
           cp -a e2e-test/config/* ${{github.workspace}}/.config/
-      - name: Run cherrypick
-        run: |
-          docker run -d -p 3000:3000 --name cherrypick -v ${{github.workspace}}/.config:/cherrypick/.config:ro ghcr.io/yojo-art/cherrypick:develop
+
       - name: Build App
         run: cargo build --release
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+      - name: Use Node.js
+        uses: actions/setup-node@v4.2.0
+        with:
+          node-version: 22.11.0
+          cache: 'pnpm'
+      - name: clone cherrypick
+        run: |
+          cd ${{github.workspace}}
+          git clone --recursive https://github.com/yojo-art/cherrypick.git
+          cd ${{github.workspace}}/cherrypick
+          git checkout master
+          git submodule update --init
+          corepack enable
+          pnpm i --frozen-lockfile
+      - name: Build Cherrypick
+        run: |
+          cd ${{github.workspace}}/cherrypick
+          NODE_ENV=production pnpm build
+      - name: Run Cherrypick
+        run: |
+          cd ${{github.workspace}}/cherrypick
+          pnpm run init
+          NODE_ENV=production pnpm run start
+
       - name: Run App
         run: cd ${{github.workspace}} && ./target/release/yojo-art-rs &
       - name: Build Test
@@ -64,7 +88,8 @@ jobs:
           sleep 10
       - name: Check App Running
         run: |
-          test -n $(ls -l /proc/*/exe 2>&1 | awk {'print $11'} | grep yojo-art-rs)
+          export RUNNING_APP=$(ls -l /proc/*/exe 2>&1 | awk {'print $11'} | grep yojo-art-rs)
+          test -n $RUNNING_APP
       - name: Run Test
         run: |
           cd ${{github.workspace}}/e2e-test
