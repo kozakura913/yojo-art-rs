@@ -1,4 +1,4 @@
-name: Docker
+name: e2e test
 
 # This workflow uses actions that are not certified by GitHub.
 # They are provided by a third-party and are governed by
@@ -52,7 +52,8 @@ jobs:
 
       - name: setup config
         run: |
-          cp -a e2e-test/config/* ./.config/
+          mkdir ${{github.workspace}}/.config
+          cp -a e2e-test/config/* ${{github.workspace}}/.config/
       - name: Run cherrypick
         run: |
           docker run -d -p 3000:3000 --name cherrypick -v ${{github.workspace}}/.config:/cherrypick/.config:ro ghcr.io/yojo-art/cherrypick:develop
