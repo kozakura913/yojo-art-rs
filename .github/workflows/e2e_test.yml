@@ -76,12 +76,12 @@ jobs:
       - name: Build Cherrypick
         working-directory: ${{github.workspace}}/cherrypick
         run: |
-          NODE_ENV=production pnpm build
+          NODE_ENV=test pnpm build
       - name: Run Cherrypick
         working-directory: ${{github.workspace}}/cherrypick
         run: |
           pnpm run init
-          NODE_ENV=production pnpm run start &
+          NODE_ENV=test pnpm run start &
 
       - name: Run App
         run: ./target/release/yojo-art-rs &

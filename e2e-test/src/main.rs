@@ -7,7 +7,7 @@ const BASE_URL:&'static str="http://localhost:3001/api";
 #[test]
 fn tl(){
 	let resp=api_post("/signup",serde_json::json!({
-		"username": uuid::Uuid::new_v4().to_string(),
+		"username": uuid::Uuid::new_v4().to_string().replace("-",""),
 		"password": "a",
 	}));
 	let token=resp.get("token").unwrap().as_str().unwrap();
