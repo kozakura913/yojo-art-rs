@@ -67,11 +67,9 @@ jobs:
         with:
           node-version: 22.11.0
           cache: 'pnpm'
-      - name: init cherrypick
+      - name: pnpm i
         working-directory: ${{github.workspace}}/cherrypick
-        run: |
-          corepack enable
-          pnpm i --frozen-lockfile
+        run: pnpm i --frozen-lockfile
       - name: Build Cherrypick
         working-directory: ${{github.workspace}}/cherrypick
         run: |
