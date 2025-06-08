@@ -44,12 +44,6 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Checkout test files
-        uses: actions/checkout@v4
-        with:
-          sparse-checkout: |
-            e2e-test
-
       - name: setup config
         run: |
           mkdir ${{github.workspace}}/.config
