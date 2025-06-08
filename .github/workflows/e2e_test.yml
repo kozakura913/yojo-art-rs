@@ -57,11 +57,11 @@ jobs:
           git checkout master
           git submodule update --init
       - name: Install pnpm
-        working-directory: ${{github.workspace}}/cherrypick
         uses: pnpm/action-setup@v4
-      - name: Use Node.js
         working-directory: ${{github.workspace}}/cherrypick
+      - name: Use Node.js
         uses: actions/setup-node@v4.2.0
+        working-directory: ${{github.workspace}}/cherrypick
         with:
           node-version: 22.11.0
           cache: 'pnpm'
