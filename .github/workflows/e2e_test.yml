@@ -57,11 +57,12 @@ jobs:
         run: cargo run --release --verbose &
       - name: Build Test
         run: |
-          cd e2e-test
+          cd ${{github.workspace}}/e2e-test
           cargo test build
       - name: Sleep
         run: |
           sleep 10
       - name: Run Test
         run: |
+          cd ${{github.workspace}}/e2e-test
           cargo test
