@@ -1,0 +1,22 @@
+{
+  "bind_addr": "0.0.0.0:3001",
+  "public_base_url": "https://a.test/files/",
+  "prefix": "files",
+  "thumbnail_filter": "Lanczos3",
+  "thumbnail_quality": 50.0,
+  "ffmpeg": "ffmpeg",
+  "ffmpeg_base_url": "https://a.test/files/",
+  "s3": {
+    "endpoint": "http://minio:9000",
+    "bucket": "files",
+    "region": "us-east-1",
+    "access_key": "accesskey",
+    "secret_key": "secretkey",
+    "timeout": 5000,
+    "path_style": true
+  },
+  "session_ttl": 300,
+  "part_max_size": 20971520,
+  "backend": "http://localhost:3000",
+  "full_upload_limit": 10485760
+}

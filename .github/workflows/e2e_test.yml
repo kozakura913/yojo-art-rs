@@ -1,0 +1,74 @@
+name: Docker
+
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+on:
+  schedule:
+    - cron: '00 25 * * *'
+  push:
+    branches: [ "develop","master" ]
+    # Publish semver tags as releases.
+    tags: [ 'v*.*.*' ]
+  pull_request:
+    branches: [ "develop","master" ]
+
+jobs:
+  e2e-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_DB: test-cherrypick
+          POSTGRES_HOST_AUTH_METHOD: trust
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Checkout test files
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            e2e-test
+
+      - name: setup config
+        run: |
+          cp -a e2e-test/config/* ./.config/
+      - name: Run cherrypick
+        run: |
+          docker run -d -p 3000:3000 --name cherrypick -v ${{github.workspace}}/.config:/cherrypick/.config:ro ghcr.io/yojo-art/cherrypick:develop
+      - name: Build App
+        run: cargo build --release --verbose
+      - name: Run App
+        run: cargo run --release --verbose &
+      - name: Build Test
+        run: |
+          cd e2e-test
+          cargo test build
+      - name: Sleep
+        run: |
+          sleep 10
+      - name: Run Test
+        run: |
+          cargo test
