@@ -60,7 +60,8 @@ jobs:
           git checkout master
           git submodule update --init
           cp pnpm-lock.yaml ../
-          cp ${{github.workspace}}/.config/default.yml .config/test.yml
+          cp ${{github.workspace}}/.config/default.yml .config
+          cp .config/default.yml .config/test.yml
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
