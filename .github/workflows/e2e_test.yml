@@ -56,12 +56,13 @@ jobs:
           git clone --recursive https://github.com/yojo-art/cherrypick.git
           git checkout master
           git submodule update --init
+          cp pnpm-lock.yml ../
       - name: Install pnpm
         uses: pnpm/action-setup@v4
-        working-directory: ${{github.workspace}}/cherrypick
+        with:
+          version: 9
       - name: Use Node.js
         uses: actions/setup-node@v4.2.0
-        working-directory: ${{github.workspace}}/cherrypick
         with:
           node-version: 22.11.0
           cache: 'pnpm'
