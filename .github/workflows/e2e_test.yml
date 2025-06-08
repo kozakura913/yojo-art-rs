@@ -22,7 +22,7 @@ jobs:
         ports:
           - 5432:5432
         env:
-          POSTGRES_DB: cherrypick
+          POSTGRES_DB: test-cherrypick
           POSTGRES_HOST_AUTH_METHOD: trust
           POSTGRES_USER: test-cherrypick-user
           POSTGRES_PASSWORD: test-cherrypick-pass
@@ -60,7 +60,7 @@ jobs:
           git checkout master
           git submodule update --init
           cp pnpm-lock.yaml ../
-          cp ${{github.workspace}}/.config/default.yml .config
+          cp ${{github.workspace}}/.config/default.yml .config/test.yml
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
