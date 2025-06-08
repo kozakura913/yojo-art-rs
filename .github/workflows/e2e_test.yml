@@ -52,7 +52,7 @@ jobs:
         run: |
           docker run -d -p 3000:3000 --name cherrypick -v ${{github.workspace}}/.config:/cherrypick/.config:ro ghcr.io/yojo-art/cherrypick:develop
       - name: Build App
-        run: cargo build --release --verbose
+        run: cargo build --release
       - name: Run App
         run: cd ${{github.workspace}} && ./target/release/yojo-art-rs &
       - name: Build Test
