@@ -1,0 +1,100 @@
+name: e2e test
+
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+on:
+  push:
+    branches: [ "develop","master" ]
+    # Publish semver tags as releases.
+    tags: [ 'v*.*.*' ]
+  pull_request:
+    branches: [ "develop","master" ]
+
+jobs:
+  e2e-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_DB: test-cherrypick
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_USER: test-cherrypick-user
+          POSTGRES_PASSWORD: test-cherrypick-pass
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+
+      - name: setup config
+        run: |
+          mkdir ${{github.workspace}}/.config
+          cp -a e2e-test/config/* ${{github.workspace}}/.config/
+
+      - name: Build App
+        run: cargo build --release
+      - name: clone cherrypick
+        run: |
+          git clone --recursive https://github.com/yojo-art/cherrypick.git
+          cd cherrypick
+          git checkout master
+          git submodule update --init
+          cp pnpm-lock.yaml ../
+          cp ${{github.workspace}}/.config/default.yml .config
+          cp .config/default.yml .config/test.yml
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - name: Use Node.js
+        uses: actions/setup-node@v4.2.0
+        with:
+          node-version: 22.11.0
+          cache: 'pnpm'
+      - name: pnpm i
+        working-directory: ${{github.workspace}}/cherrypick
+        run: pnpm i --frozen-lockfile
+      - name: Build Cherrypick
+        working-directory: ${{github.workspace}}/cherrypick
+        run: |
+          NODE_ENV=test pnpm build
+      - name: Run Cherrypick
+        working-directory: ${{github.workspace}}/cherrypick
+        run: |
+          pnpm run init
+          NODE_ENV=test pnpm run start &
+
+      - name: Run App
+        run: ./target/release/yojo-art-rs &
+      - name: Build Test
+        working-directory: ${{github.workspace}}/e2e-test
+        run: cargo test build
+      - name: Sleep
+        run: sleep 10
+      - name: Check App Running
+        run: |
+          export RUNNING_APP=$(ls -l /proc/*/exe 2>&1 | awk {'print $11'} | grep yojo-art-rs)
+          test -n $RUNNING_APP
+      - name: Run Test
+        working-directory: ${{github.workspace}}/e2e-test
+        run: cargo test
