@@ -19,7 +19,7 @@ fn note_create(){
 		"scheduledDelete": null,
 		"i": token,
 	}));
-	assert!(resp.get("id").is_some(),"{:?}", resp);
+	assert!(resp.get("createdNote").is_some(),"{:?}", resp);
 }
 #[test]
 fn timeline(){
@@ -44,6 +44,7 @@ fn timeline(){
 		"i": token,
 	}));
 	assert!(resp.is_array(),"{:?}", resp);
+	assert_eq!(resp.as_array().unwrap().len(),1,"{:?}", resp);
 }
 fn signup()->(String,String){
 	let mut rng = rand::rng();
