@@ -89,7 +89,7 @@ impl FanoutTimelineService {
 		user_id: &String,
 		opts: &TLOptions,
 	) -> Result<Vec<PackedNote>, ServerError> {
-		let mut con = self.db.get().await.ok_or("db error")?;
+		let mut con = self.db.get_read_only().await.ok_or("db error")?;
 		let mut user_cache = HashMap::new();
 		let (notes, relation_note) = self
 			.get_notes(

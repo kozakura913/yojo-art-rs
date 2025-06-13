@@ -11,7 +11,7 @@ impl AnnouncementService {
 		Self { db }
 	}
 	pub async fn get_unread_announcements(&self, user_id: &str) -> Option<Vec<MiAnnouncement>> {
-		let mut con = self.db.get().await?;
+		let mut con = self.db.get_read_only().await?;
 		use crate::models::announcement::announcement::dsl::announcement;
 		use crate::models::announcement::announcement::dsl::*;
 		use crate::models::announcement_read::announcement_read;

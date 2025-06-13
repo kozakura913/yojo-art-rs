@@ -18,7 +18,7 @@ impl InstanceService {
 		Self { db, redis }
 	}
 	pub async fn fetch(&self, host: impl AsRef<str>) -> Result<MiInstance, ServerError> {
-		let mut con = self.db.get().await.ok_or("db")?;
+		let mut con = self.db.get_read_only().await.ok_or("db")?;
 		self.fetch_connection((&mut con).into(), host).await
 	}
 	pub async fn fetch_connection(

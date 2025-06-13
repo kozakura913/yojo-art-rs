@@ -512,7 +512,6 @@ impl<'a, 'b> From<&'b mut DBConnection<'a>> for DBConnectionRef<'a, 'b> {
 }
 impl<'a, 'b> From<Arc<Mutex<&'b mut DBConnection<'a>>>> for DBConnectionRef<'a, 'b> {
 	fn from(value: Arc<Mutex<&'b mut DBConnection<'a>>>) -> Self {
-		value.lock();
 		Self::Mutex(value)
 	}
 }
@@ -536,6 +535,15 @@ impl DataBase {
 		Ok(Self(pool))
 	}
 	pub async fn get(&self) -> Option<DBConnection> {
+		match self.0.get().await {
+			Ok(c) => Some(c),
+			Err(e) => {
+				eprintln!("DB Error {:?}", e);
+				None
+			}
+		}
+	}
+	pub async fn get_read_only(&self) -> Option<DBConnection> {
 		match self.0.get().await {
 			Ok(c) => Some(c),
 			Err(e) => {

@@ -61,7 +61,7 @@ impl RoleService {
 	}
 
 	pub async fn get_user_assigns(&self, user_id: &str) -> Option<Vec<MiRoleAssignment>> {
-		let mut con = self.db.get().await?;
+		let mut con = self.db.get_read_only().await?;
 		let now = chrono::Utc::now().naive_utc().into();
 		let assigns: Vec<MiRoleAssignment> = {
 			use crate::models::role::role_assignment::dsl::role_assignment;
@@ -98,7 +98,7 @@ impl RoleService {
 				return Some(v.clone());
 			}
 		}
-		let mut con = self.db.get().await?;
+		let mut con = self.db.get_read_only().await?;
 		let roles: Vec<MiRole> = {
 			use crate::models::role::role::dsl::role;
 			use diesel_async::RunQueryDsl;

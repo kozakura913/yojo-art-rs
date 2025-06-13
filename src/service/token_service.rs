@@ -74,7 +74,7 @@ impl TokenService {
 	}
 	pub async fn get_permission(&self, token: &Token) -> TokenPermission {
 		let token_id = token.0.as_str();
-		let mut con = self.db.get().await.unwrap();
+		let mut con = self.db.get_read_only().await.unwrap();
 		let token = MiAccessToken::load_by_id(&mut con, token_id).await;
 		if let Some(token) = token {
 			return TokenPermission::Token(token);

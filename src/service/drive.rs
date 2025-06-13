@@ -154,7 +154,7 @@ impl DriveService {
 		//#region Check drive usage
 		let mut con = self
 			.db
-			.get()
+			.get_read_only()
 			.await
 			.ok_or(RegisterPreflightError::InternalServerError)?;
 		if !is_link {

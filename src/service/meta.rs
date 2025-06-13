@@ -39,7 +39,7 @@ impl MetaService {
 				return Some(v);
 			}
 		}
-		let mut con = self.db.get().await?;
+		let mut con = self.db.get_read_only().await?;
 		let other: MiMetaOther = {
 			use crate::models::meta::other::meta::dsl::meta;
 			meta.select(MiMetaOther::as_select())
