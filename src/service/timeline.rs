@@ -1,17 +1,21 @@
-use std::collections::{HashMap, HashSet};
+use std::{borrow::Cow, collections::{HashMap, HashSet}};
+
+use chrono::Duration;
 
 use crate::{
 	models::{
 		blocking::MiBlocking, following::MiFollowing, muting::MiMuting, note::MiNote, renote_muting::MiRenoteMuting, user::MiUser, user_profile::MiUserProfile
-	}, service::note::NoteService, DBConnection, DBConnectionRef, DataBase, ServerError
+	}, service::{id_service::IdService, note::{NoteService, PackedNote}}, DBConnection, DBConnectionRef, DataBase, ServerError
 };
 
 #[derive(Clone, Debug)]
 pub struct TimelineService {
 	db: DataBase,
 	note_service: NoteService,
+	id_service: IdService,
 	//TODO キャッシュ
 }
+#[derive(Clone,Debug)]
 pub struct TLOptions {
 	pub until_id: Option<String>,
 	pub since_id: Option<String>,
@@ -31,22 +35,54 @@ pub struct TimelineHints {
 	pub is_muting_user: HashMap<String, bool>,
 }
 impl TimelineService {
-	pub fn new(db: DataBase, note_service: NoteService) -> Self {
-		Self { db, note_service }
+	pub fn new(db: DataBase, note_service: NoteService,id_service: IdService,) -> Self {
+		Self { db, note_service,id_service }
+	}
+	pub async fn home_tl(
+		&self,
+		user_id: &String,
+		opts: &TLOptions,
+	) -> Result<Vec<PackedNote>, ServerError> {
+		let mut con = self.db.get_read_only().await?;
+		let mut user_cache = HashMap::new();
+		let (notes, relation_note) = self
+			.get_htl(
+				user_id,
+				&mut user_cache,
+				opts,
+			)
+			.await?;
+		let mut note_cache = HashMap::new();
+		let mut packed_notes = vec![];
+		for note in notes {
+			let packed_note = self
+				.note_service
+				.pack_detail(
+					&mut con,
+					note,
+					user_id,
+					&mut user_cache,
+					&mut note_cache,
+					&relation_note,
+				)
+				.await?;
+			packed_notes.push(packed_note);
+		}
+		Ok(packed_notes)
 	}
 	pub async fn get_htl(
 		&self,
 		me_id: &String,
 		user_cache: &mut HashMap<String, MiUser>,
-		opts: &mut TLOptions,
+		opts: &TLOptions,
 	) -> Result<(Vec<MiNote>, HashMap<String, MiNote>), ServerError> {
 		let mut notes: Vec<MiNote> = Vec::new();
 		let mut exclude_users = HashSet::new();
 		let mut hints = TimelineHints {
 			..Default::default()
 		};
-		loop{
-			let mut append_notes: Vec<MiNote> = match raw_htl(&self.db, me_id,user_cache, opts, &mut hints).await{
+		for _ in 0..100{
+			let mut append_notes: Vec<MiNote> = match raw_htl(&self.db, me_id,user_cache, &opts, &mut hints).await{
 				Ok(v)=>v,
 				Err(e)=>{
 					if notes.is_empty(){
@@ -56,7 +92,9 @@ impl TimelineService {
 					}
 				}
 			};
-			append_notes.retain(|note| opts.with_renotes || !note.is_renote() || note.is_quote());
+			if append_notes.is_empty(){
+				return Ok((notes,hints.note_relation_note));
+			}
 			let _ = self
 				.filter_note(
 					&mut (&self.db).get_read_only().await?,
@@ -290,6 +328,7 @@ async fn raw_htl(
 	let muted_instances = muted_instances?.iter().collect::<Vec<_>>();
 
 	if opt.with_cats{
+		//フォローユーザーでもcatではない事が明らかな場合は除外
 		following.retain(|f| user_cache.get(*f).map(|u|u.is_cat).unwrap_or(true));
 	}
 
@@ -315,7 +354,7 @@ async fn raw_htl(
 	let me_id = me_id.to_string();
 	following.push(&me_id); //自身をTLに含める
 	let mut con = db.get_read_only().await?;
-	let raw_tl: Vec<MiNote> = {
+	let mut raw_tl: Vec<MiNote> = {
 		use crate::models::note::note::dsl::note;
 		use crate::models::note::note::dsl::*;
 		use diesel::BoolExpressionMethods;
@@ -350,6 +389,22 @@ async fn raw_htl(
 		q = q.limit(opt.limit.into());
 		q.select(MiNote::as_select()).load(&mut con).await?
 	};
+	let remove_last=if let Some(note)=raw_tl.last(){
+		Some(&note.id)==opt.since_id.as_ref()||Some(&note.id)==opt.until_id.as_ref()
+	}else{
+		false
+	};
+	if remove_last{
+		raw_tl.remove(raw_tl.len()-1);
+	}
+	let remove_first=if let Some(note)=raw_tl.get(0){
+		Some(&note.id)==opt.since_id.as_ref()||Some(&note.id)==opt.until_id.as_ref()
+	}else{
+		false
+	};
+	if remove_first{
+		raw_tl.remove(0);
+	}
 	Ok(raw_tl)
 }
 

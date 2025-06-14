@@ -1,6 +1,5 @@
 use std::{
-	collections::{HashMap, HashSet},
-	sync::Arc,
+	borrow::Cow, collections::{HashMap, HashSet}, sync::Arc
 };
 
 use redis::{AsyncCommands, aio::MultiplexedConnection};
@@ -86,7 +85,7 @@ impl FanoutTimelineService {
 	) -> Result<Vec<PackedNote>, ServerError> {
 		let mut con = self.db.get_read_only().await?;
 		let mut user_cache = HashMap::new();
-		let (notes, relation_note) = self
+		let (mut notes, mut relation_note) = self
 			.get_notes(
 				&mut con,
 				Some(user_id),
@@ -95,6 +94,19 @@ impl FanoutTimelineService {
 				opts,
 			)
 			.await?;
+
+		if notes.is_empty() || (!opts.allow_partial && ( notes.len() <= opts.limit.into())) {
+			let opts=if let Some(last)=notes.last(){
+				let mut opts=opts.clone();
+				opts.since_id=Some(last.id.clone());
+				Cow::Owned(opts)
+			}else{
+				Cow::Borrowed(opts)
+			};
+			let (add_notes,add_relation_note)=self.timeline_service.get_htl(user_id, &mut user_cache, &opts).await?;
+			relation_note.extend(add_relation_note);
+			notes.extend_from_slice(&add_notes);
+		}
 		let mut note_cache = HashMap::new();
 		let mut packed_notes = vec![];
 		for note in notes {
