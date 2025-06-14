@@ -129,7 +129,7 @@ pub async fn post(
 	if !permission.is_allow(crate::service::token_service::PermissionKind::WriteDrive) {
 		return StatusCode::FORBIDDEN.into_response();
 	}
-	let mut con = if let Some(con) = ctx.raw_db.get().await {
+	let mut con = if let Some(con) = ctx.raw_db.get_writeable().await {
 		con
 	} else {
 		let mut header = axum::http::header::HeaderMap::new();

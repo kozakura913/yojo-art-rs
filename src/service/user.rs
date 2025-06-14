@@ -108,7 +108,12 @@ impl UserService {
 			Some(me_id) => self.role_service.is_moderator(me_id).await,
 			None => false,
 		};
-		let mut con = self.db.get_read_only().await?;
+		let mut con = self
+			.db
+			.get_read_only()
+			.await
+			.map_err(|e| eprintln!("{}:{} {:?}", file!(), line!(), e))
+			.ok()?;
 		let profile = if is_detailed {
 			MiUserProfile::load_by_user(&mut con, user.id.as_ref()).await
 		} else {
@@ -200,9 +205,13 @@ impl UserService {
 		};
 		let unreadAnnouncements = if is_me && is_detailed {
 			//createdAt: self.id_service.parse(announcement.id).date.toISOString(),
-			self.announcement_service
-				.get_unread_announcements(&user.id)
-				.await
+			Some(
+				self.announcement_service
+					.get_unread_announcements(&user.id)
+					.await
+					.map_err(|e| e.text)
+					.expect("後で作る"),
+			)
 		} else {
 			None
 		};
@@ -216,7 +225,12 @@ impl UserService {
 	pub async fn get_relation(&self, me_id: &str, target: &str) -> Option<UserRelation> {
 		use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
 		use diesel_async::RunQueryDsl;
-		let mut con = self.db.get_read_only().await?;
+		let mut con = self
+			.db
+			.get_read_only()
+			.await
+			.map_err(|e| eprintln!("{}:{} {:?}", file!(), line!(), e))
+			.ok()?;
 		let f_following = async move {
 			let res: Option<MiFollowing> = {
 				use crate::models::following::following::dsl::following;
@@ -234,7 +248,12 @@ impl UserService {
 			.ok();
 			res
 		};
-		let mut con = self.db.get_read_only().await?;
+		let mut con = self
+			.db
+			.get_read_only()
+			.await
+			.map_err(|e| eprintln!("{}:{} {:?}", file!(), line!(), e))
+			.ok()?;
 		let f_is_followed = async move {
 			use crate::models::following::following::dsl::following;
 			use crate::models::following::following::dsl::*;
@@ -249,7 +268,12 @@ impl UserService {
 				.ok();
 			res.is_some()
 		};
-		let mut con = self.db.get_read_only().await?;
+		let mut con = self
+			.db
+			.get_read_only()
+			.await
+			.map_err(|e| eprintln!("{}:{} {:?}", file!(), line!(), e))
+			.ok()?;
 		let f_has_pending_follow_request_from_you = async move {
 			use crate::models::follow_request::follow_request::dsl::follow_request;
 			use crate::models::follow_request::follow_request::dsl::*;
@@ -264,7 +288,12 @@ impl UserService {
 				.ok();
 			res.is_some()
 		};
-		let mut con = self.db.get_read_only().await?;
+		let mut con = self
+			.db
+			.get_read_only()
+			.await
+			.map_err(|e| eprintln!("{}:{} {:?}", file!(), line!(), e))
+			.ok()?;
 		let f_has_pending_follow_request_to_you = async move {
 			use crate::models::follow_request::follow_request::dsl::follow_request;
 			use crate::models::follow_request::follow_request::dsl::*;
@@ -279,7 +308,12 @@ impl UserService {
 				.ok();
 			res.is_some()
 		};
-		let mut con = self.db.get_read_only().await?;
+		let mut con = self
+			.db
+			.get_read_only()
+			.await
+			.map_err(|e| eprintln!("{}:{} {:?}", file!(), line!(), e))
+			.ok()?;
 		let f_is_blocking = async move {
 			use crate::models::blocking::blocking::dsl::blocking;
 			use crate::models::blocking::blocking::dsl::*;
@@ -294,7 +328,12 @@ impl UserService {
 				.ok();
 			res.is_some()
 		};
-		let mut con = self.db.get_read_only().await?;
+		let mut con = self
+			.db
+			.get_read_only()
+			.await
+			.map_err(|e| eprintln!("{}:{} {:?}", file!(), line!(), e))
+			.ok()?;
 		let f_is_blocked = async move {
 			use crate::models::blocking::blocking::dsl::blocking;
 			use crate::models::blocking::blocking::dsl::*;
@@ -309,7 +348,12 @@ impl UserService {
 				.ok();
 			res.is_some()
 		};
-		let mut con = self.db.get_read_only().await?;
+		let mut con = self
+			.db
+			.get_read_only()
+			.await
+			.map_err(|e| eprintln!("{}:{} {:?}", file!(), line!(), e))
+			.ok()?;
 		let f_is_muted = async move {
 			use crate::models::muting::muting::dsl::muting;
 			use crate::models::muting::muting::dsl::*;
@@ -324,7 +368,12 @@ impl UserService {
 				.ok();
 			res.is_some()
 		};
-		let mut con = self.db.get_read_only().await?;
+		let mut con = self
+			.db
+			.get_read_only()
+			.await
+			.map_err(|e| eprintln!("{}:{} {:?}", file!(), line!(), e))
+			.ok()?;
 		let f_is_renote_muted = async move {
 			use crate::models::renote_muting::renote_muting::dsl::renote_muting;
 			use crate::models::renote_muting::renote_muting::dsl::*;
@@ -426,7 +475,7 @@ impl UserService {
 			user.avatar_url.unwrap()
 		};
 		//println!("avatar_decorations={:?}", user.avatar_decorations);
-		let mut con = self.db.get_read_only().await.ok_or("db")?;
+		let mut con = self.db.get_read_only().await?;
 		let instance = match user.host.as_ref() {
 			Some(host) => Some(
 				self.instance_service

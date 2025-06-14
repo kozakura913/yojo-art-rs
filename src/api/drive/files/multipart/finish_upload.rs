@@ -173,7 +173,7 @@ pub async fn post(
 		}
 		//println!("thumbnail {}ms",(chrono::Utc::now()-start_time).num_milliseconds());
 	}
-	let mut con = ctx.raw_db.get().await.ok_or("db")?;
+	let mut con = ctx.raw_db.get_writeable().await.ok_or("db")?;
 	let user = MiUser::load_by_id(&mut con, &session.user_id).await?;
 	let res = ctx
 		.drive_service

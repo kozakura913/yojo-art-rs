@@ -11,6 +11,7 @@ use crate::{
 		blocking::MiBlocking, following::MiFollowing, muting::MiMuting, note::MiNote,
 		renote_muting::MiRenoteMuting, user::MiUser, user_profile::MiUserProfile,
 	},
+	service::timeline::{TLOptions, TimelineHints, TimelineService},
 };
 
 use super::{
@@ -50,15 +51,7 @@ pub struct FanoutTimelineService {
 	event_service: EventService,
 	redis_for_timelines: MultiplexedConnection,
 	note_service: NoteService,
-}
-pub struct TLOptions {
-	pub until_id: Option<String>,
-	pub since_id: Option<String>,
-	pub with_files: bool,
-	pub with_renotes: bool,
-	pub allow_partial: bool,
-	pub with_cats: bool,
-	pub limit: u16,
+	timeline_service: TimelineService,
 }
 impl FanoutTimelineService {
 	pub fn new(
@@ -71,6 +64,7 @@ impl FanoutTimelineService {
 		event_service: EventService,
 		note_service: NoteService,
 		redis_for_timelines: MultiplexedConnection,
+		timeline_service: TimelineService,
 	) -> Self {
 		Self {
 			config,
@@ -82,6 +76,7 @@ impl FanoutTimelineService {
 			event_service,
 			note_service,
 			redis_for_timelines,
+			timeline_service,
 		}
 	}
 	pub async fn home_tl(
@@ -89,7 +84,7 @@ impl FanoutTimelineService {
 		user_id: &String,
 		opts: &TLOptions,
 	) -> Result<Vec<PackedNote>, ServerError> {
-		let mut con = self.db.get_read_only().await.ok_or("db error")?;
+		let mut con = self.db.get_read_only().await?;
 		let mut user_cache = HashMap::new();
 		let (notes, relation_note) = self
 			.get_notes(
@@ -156,8 +151,10 @@ impl FanoutTimelineService {
 
 		use crate::{DataBase, models::note::MiNote};
 		let mut notes: Vec<MiNote> = Vec::new();
-		let mut note_relation_note = HashMap::new();
 		let mut exclude_users = HashSet::new();
+		let mut hints = TimelineHints {
+			..Default::default()
+		};
 		while !tl.is_empty() {
 			let limit_tl: Vec<String> = tl.drain(0..tl.len().min(opts.limit as usize)).collect();
 			let mut append_notes: Vec<MiNote> = {
@@ -170,12 +167,13 @@ impl FanoutTimelineService {
 			};
 			append_notes.retain(|note| opts.with_renotes || !note.is_renote() || note.is_quote());
 			let _ = self
+				.timeline_service
 				.filter_note(
 					con,
 					&mut append_notes,
 					me_id,
-					&mut note_relation_note,
 					&mut exclude_users,
+					&mut hints,
 				)
 				.await?;
 			if !append_notes.is_empty() {
@@ -217,154 +215,6 @@ impl FanoutTimelineService {
 			}
 		});
 		notes.truncate(opts.limit as usize);
-		Ok((notes, note_relation_note))
-	}
-
-	async fn filter_note(
-		&self,
-		con: &mut DBConnection<'_>,
-		notes: &mut Vec<MiNote>,
-		me_id: Option<&String>,
-		note_relation_note: &mut HashMap<String, MiNote>,
-		exclude_users: &mut HashSet<String>,
-	) -> Result<(), ServerError> {
-		if notes.is_empty() {
-			return Ok(());
-		}
-		use diesel::ExpressionMethods;
-		use diesel::{QueryDsl, SelectableHelper};
-		use diesel_async::RunQueryDsl;
-		let mut note_relation_user_ids = HashSet::new();
-		for note in notes.iter() {
-			if let Some(reply_id) = note.reply_id.as_ref() {
-				let reply = MiNote::load_by_id(con, reply_id).await?;
-				if !exclude_users.contains(&reply.user_id) {
-					note_relation_user_ids.insert(reply.user_id.clone());
-				}
-				note_relation_note.insert(reply_id.clone(), reply);
-			}
-			if let Some(renote_id) = note.renote_id.as_ref() {
-				let renote = MiNote::load_by_id(con, renote_id).await?;
-				if !exclude_users.contains(&renote.user_id) {
-					note_relation_user_ids.insert(renote.user_id.clone());
-				}
-				note_relation_note.insert(renote_id.clone(), renote);
-			}
-			if !exclude_users.contains(&note.user_id) {
-				note_relation_user_ids.insert(note.user_id.clone());
-			}
-		}
-		if let Some(me_id) = me_id {
-			let note_relation_user_ids: Vec<String> = note_relation_user_ids.into_iter().collect();
-			if !note_relation_user_ids.is_empty() {
-				use crate::models::blocking::blocking::dsl::blocking;
-				use crate::models::blocking::blocking::dsl::*;
-				let res: Vec<MiBlocking> = blocking
-					.filter(blockerId.eq(me_id))
-					.filter(blockeeId.eq_any(&note_relation_user_ids))
-					.select(MiBlocking::as_select())
-					.load(con)
-					.await?;
-				for block in res {
-					exclude_users.insert(block.blockee_id);
-				}
-			}
-			{
-				use crate::models::muting::muting::dsl::muting;
-				use crate::models::muting::muting::dsl::*;
-				let res: Vec<MiMuting> = muting
-					.filter(muterId.eq(me_id))
-					.filter(muteeId.eq_any(&note_relation_user_ids))
-					.select(MiMuting::as_select())
-					.load(con)
-					.await?;
-				for mute in res {
-					exclude_users.insert(mute.mutee_id);
-				}
-			}
-
-			let mi_followings: Vec<MiFollowing> = {
-				use crate::models::following::following::dsl::following;
-				use crate::models::following::following::dsl::*;
-				following
-					.filter(followerId.eq(me_id))
-					.select(MiFollowing::as_select())
-					.load(con)
-					.await?
-			};
-			let mut followings = HashSet::new();
-			for f in mi_followings {
-				followings.insert(f.followee_id);
-			}
-			let muted_instances = MiUserProfile::load_by_user(con, &me_id)
-				.await
-				.map(|profile| {
-					let mut muted_instances = HashSet::new();
-					for host in profile.muted_instances.into_inner() {
-						muted_instances.insert(host);
-					}
-					muted_instances
-				});
-
-			let renote_muting = {
-				use crate::models::renote_muting::renote_muting::dsl::renote_muting;
-				use crate::models::renote_muting::renote_muting::dsl::*;
-				let mi_renote_muting: Vec<MiRenoteMuting> = renote_muting
-					.filter(muterId.eq(me_id))
-					.select(MiRenoteMuting::as_select())
-					.load(con)
-					.await?;
-				let mut renote_muting_set = HashSet::new();
-				for renote_mute in mi_renote_muting {
-					renote_muting_set.insert(renote_mute.mutee_id);
-				}
-				renote_muting_set
-			};
-			let filter = move |note: &MiNote| {
-				if exclude_users.contains(&note.user_id) {
-					return false;
-				}
-				if !note.is_visible(me_id, Some(&followings)) {
-					return false;
-				}
-				if note.is_renote() && !note.is_quote() && renote_muting.contains(&note.user_id) {
-					return false;
-				}
-				if let Some((muted_instances, user_host)) =
-					muted_instances.as_ref().zip(note.user_host.as_ref())
-				{
-					if muted_instances.contains(user_host) {
-						return false;
-					}
-				}
-				//mi_renote_muting
-				return true;
-			};
-			notes.retain(|note| {
-				if !filter(&note) {
-					return false;
-				}
-				if let Some(Some(reply)) = note
-					.reply_id
-					.as_ref()
-					.map(|reply| note_relation_note.get(reply))
-				{
-					if !filter(&reply) {
-						return false;
-					}
-				}
-				if let Some(Some(renote)) = note
-					.renote_id
-					.as_ref()
-					.map(|renote| note_relation_note.get(renote))
-				{
-					if !filter(&renote) {
-						return false;
-					}
-				}
-				return true;
-			});
-		}
-		Ok(())
+		Ok((notes, hints.note_relation_note))
 	}
 }

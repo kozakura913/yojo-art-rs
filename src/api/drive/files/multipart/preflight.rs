@@ -55,7 +55,7 @@ pub async fn post(
 	let user;
 	let mut register_preflight_result =
 		Err(crate::service::drive::RegisterPreflightError::InternalServerError);
-	match ctx.raw_db.get().await {
+	match ctx.raw_db.get_writeable().await {
 		Some(mut con) => {
 			let db_token = MiAccessToken::load_by_id(&mut con, &q.i).await;
 			user = match db_token {

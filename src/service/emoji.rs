@@ -109,6 +109,13 @@ impl EmojiService {
 							let mut con = m.lock().await;
 							query.first(&mut con).await
 						}
+						DBConnectionRef::New(db) => match db.get_read_only().await {
+							Ok(mut con) => query.first(&mut con).await,
+							Err(e) => {
+								eprintln!("{}:{} {:?}", file!(), line!(), e);
+								Err(diesel::result::Error::BrokenTransactionManager)
+							}
+						},
 					}
 					.map_err(|e| {
 						eprintln!("{}:{} {:?}", file!(), line!(), e);

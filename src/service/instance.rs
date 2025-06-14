@@ -18,7 +18,7 @@ impl InstanceService {
 		Self { db, redis }
 	}
 	pub async fn fetch(&self, host: impl AsRef<str>) -> Result<MiInstance, ServerError> {
-		let mut con = self.db.get_read_only().await.ok_or("db")?;
+		let mut con = self.db.get_read_only().await?;
 		self.fetch_connection((&mut con).into(), host).await
 	}
 	pub async fn fetch_connection(
@@ -48,6 +48,13 @@ impl InstanceService {
 					let mut con = m.lock().await;
 					query.first(&mut con).await
 				}
+				DBConnectionRef::New(db) => match db.get_read_only().await {
+					Ok(mut con) => query.first(&mut con).await,
+					Err(e) => {
+						eprintln!("{}:{} {:?}", file!(), line!(), e);
+						Err(diesel::result::Error::BrokenTransactionManager)
+					}
+				},
 			}
 			.map_err(|e| {
 				eprintln!("{}:{} {:?}", file!(), line!(), e);

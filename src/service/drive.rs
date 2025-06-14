@@ -156,7 +156,7 @@ impl DriveService {
 			.db
 			.get_read_only()
 			.await
-			.ok_or(RegisterPreflightError::InternalServerError)?;
+			.map_err(|_| RegisterPreflightError::InternalServerError)?;
 		if !is_link {
 			if let Some(user) = user.as_ref() {
 				let usage = calc_drive_usage_of(&mut con, &user.id).await;
@@ -219,7 +219,7 @@ impl DriveService {
 		thumbnail_key: Option<&str>,
 		base_url: String,
 	) -> Option<(MiDriveFile, Option<serde_json::Value>)> {
-		let mut con = self.db.get().await?;
+		let mut con = self.db.get_writeable().await?;
 		let user_id = user.as_ref().map(|user| user.id.as_str());
 		let instance = self.meta_service.load(true).await?;
 		let (user_role_nsfw, profile) = match user_id {

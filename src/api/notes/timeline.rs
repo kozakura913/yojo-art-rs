@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::{
 	Context, ServerError,
-	service::{fanout_timeline::TLOptions, token_service::Token},
+	service::{timeline::TLOptions, token_service::Token},
 };
 
 #[derive(Debug, Deserialize)]

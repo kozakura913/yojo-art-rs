@@ -35,7 +35,7 @@ pub async fn post(
 	// Check if there is a file with the same hash
 	use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
 	use diesel_async::RunQueryDsl;
-	let mut con = if let Some(con) = ctx.raw_db.get().await {
+	let mut con = if let Some(con) = ctx.raw_db.get_writeable().await {
 		con
 	} else {
 		return StatusCode::INTERNAL_SERVER_ERROR.into_response();

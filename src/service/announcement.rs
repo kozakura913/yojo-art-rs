@@ -1,6 +1,6 @@
 use diesel::BoolExpressionMethods;
 
-use crate::{DataBase, models::announcement::MiAnnouncement};
+use crate::{DataBase, ServerError, models::announcement::MiAnnouncement};
 
 #[derive(Clone, Debug)]
 pub struct AnnouncementService {
@@ -10,7 +10,10 @@ impl AnnouncementService {
 	pub fn new(db: DataBase) -> Self {
 		Self { db }
 	}
-	pub async fn get_unread_announcements(&self, user_id: &str) -> Option<Vec<MiAnnouncement>> {
+	pub async fn get_unread_announcements(
+		&self,
+		user_id: &str,
+	) -> Result<Vec<MiAnnouncement>, ServerError> {
 		let mut con = self.db.get_read_only().await?;
 		use crate::models::announcement::announcement::dsl::announcement;
 		use crate::models::announcement::announcement::dsl::*;
@@ -20,18 +23,14 @@ impl AnnouncementService {
 		let target_ids = announcement_read::dsl::announcement_read
 			.filter(announcement_read::dsl::userId.eq(user_id))
 			.select(announcement_read::dsl::announcementId);
-		let res: Option<Vec<MiAnnouncement>> = announcement
+		let res: Vec<MiAnnouncement> = announcement
 			.filter(isActive.eq(true))
 			.filter(silence.eq(false))
 			.filter(userId.eq(user_id).or(userId.eq::<Option<String>>(None)))
 			.filter(forExistingUsers.eq(false).or(id.gt(user_id)))
 			.filter(diesel::dsl::not(id.eq_any(target_ids)))
 			.load(&mut con)
-			.await
-			.map_err(|e| {
-				eprintln!("{}:{} {:?}", file!(), line!(), e);
-			})
-			.ok();
-		res
+			.await?;
+		Ok(res)
 	}
 }
