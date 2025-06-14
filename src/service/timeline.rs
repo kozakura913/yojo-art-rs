@@ -1,11 +1,20 @@
-use std::{borrow::Cow, collections::{HashMap, HashSet}};
+use std::{
+	borrow::Cow,
+	collections::{HashMap, HashSet},
+};
 
 use chrono::Duration;
 
 use crate::{
+	DBConnection, DBConnectionRef, DataBase, ServerError,
 	models::{
-		blocking::MiBlocking, following::MiFollowing, muting::MiMuting, note::MiNote, renote_muting::MiRenoteMuting, user::MiUser, user_profile::MiUserProfile
-	}, service::{id_service::IdService, note::{NoteService, PackedNote}}, DBConnection, DBConnectionRef, DataBase, ServerError
+		blocking::MiBlocking, following::MiFollowing, muting::MiMuting, note::MiNote,
+		renote_muting::MiRenoteMuting, user::MiUser, user_profile::MiUserProfile,
+	},
+	service::{
+		id_service::IdService,
+		note::{NoteService, PackedNote},
+	},
 };
 
 #[derive(Clone, Debug)]
@@ -15,7 +24,7 @@ pub struct TimelineService {
 	id_service: IdService,
 	//TODO キャッシュ
 }
-#[derive(Clone,Debug)]
+#[derive(Clone, Debug)]
 pub struct TLOptions {
 	pub until_id: Option<String>,
 	pub since_id: Option<String>,
@@ -35,8 +44,12 @@ pub struct TimelineHints {
 	pub is_muting_user: HashMap<String, bool>,
 }
 impl TimelineService {
-	pub fn new(db: DataBase, note_service: NoteService,id_service: IdService,) -> Self {
-		Self { db, note_service,id_service }
+	pub fn new(db: DataBase, note_service: NoteService, id_service: IdService) -> Self {
+		Self {
+			db,
+			note_service,
+			id_service,
+		}
 	}
 	pub async fn home_tl(
 		&self,
@@ -45,13 +58,7 @@ impl TimelineService {
 	) -> Result<Vec<PackedNote>, ServerError> {
 		let mut con = self.db.get_read_only().await?;
 		let mut user_cache = HashMap::new();
-		let (notes, relation_note) = self
-			.get_htl(
-				user_id,
-				&mut user_cache,
-				opts,
-			)
-			.await?;
+		let (notes, relation_note) = self.get_htl(user_id, &mut user_cache, opts).await?;
 		let mut note_cache = HashMap::new();
 		let mut packed_notes = vec![];
 		for note in notes {
@@ -81,19 +88,20 @@ impl TimelineService {
 		let mut hints = TimelineHints {
 			..Default::default()
 		};
-		for _ in 0..100{
-			let mut append_notes: Vec<MiNote> = match raw_htl(&self.db, me_id,user_cache, &opts, &mut hints).await{
-				Ok(v)=>v,
-				Err(e)=>{
-					if notes.is_empty(){
-						return Err(e.into());
-					}else{
-						return Ok((notes, hints.note_relation_note));
+		for _ in 0..100 {
+			let mut append_notes: Vec<MiNote> =
+				match raw_htl(&self.db, me_id, user_cache, &opts, &mut hints).await {
+					Ok(v) => v,
+					Err(e) => {
+						if notes.is_empty() {
+							return Err(e.into());
+						} else {
+							return Ok((notes, hints.note_relation_note));
+						}
 					}
-				}
-			};
-			if append_notes.is_empty(){
-				return Ok((notes,hints.note_relation_note));
+				};
+			if append_notes.is_empty() {
+				return Ok((notes, hints.note_relation_note));
 			}
 			let _ = self
 				.filter_note(
@@ -117,7 +125,9 @@ impl TimelineService {
 						})
 						.collect();
 					if !user_ids.is_empty() {
-						let append_users = MiUser::load_by_ids(&mut (&self.db).get_read_only().await?, &user_ids).await?;
+						let append_users =
+							MiUser::load_by_ids(&mut (&self.db).get_read_only().await?, &user_ids)
+								.await?;
 						user_cache
 							.extend(append_users.into_iter().map(|user| (user.id.clone(), user)));
 					}
@@ -327,9 +337,9 @@ async fn raw_htl(
 	let mut following = following_set?.iter().collect::<Vec<_>>();
 	let muted_instances = muted_instances?.iter().collect::<Vec<_>>();
 
-	if opt.with_cats{
+	if opt.with_cats {
 		//フォローユーザーでもcatではない事が明らかな場合は除外
-		following.retain(|f| user_cache.get(*f).map(|u|u.is_cat).unwrap_or(true));
+		following.retain(|f| user_cache.get(*f).map(|u| u.is_cat).unwrap_or(true));
 	}
 
 	let mut con = db.get_read_only().await?;
@@ -366,14 +376,15 @@ async fn raw_htl(
 			q = q.filter(
 				renoteId.is_null().or(text
 					.is_not_null()
-					.or(fileIds.ne(Vec::<String>::new()))
+					//.or(fileIds.ne(Vec::<String>::new()))
 					.or(cw.is_not_null())
 					.or(replyId.is_not_null())
 					.or(hasPoll.eq(true))),
 			);
 		}
 		if opt.with_files {
-			q = q.filter(fileIds.ne(Vec::<String>::new()))
+			//TODO yojo-art 1.5.0時点ではfileIdsがVarChar[]型でdiesel側仕様でVarChar型が扱えない(Textとして扱われる)都合で型エラーを起こす
+			//q = q.filter(fileIds.ne(Vec::<String>::new()));
 		}
 		if opt.since_id.is_some() && opt.until_id.is_none() {
 			q = q.order(id.asc());
@@ -389,20 +400,20 @@ async fn raw_htl(
 		q = q.limit(opt.limit.into());
 		q.select(MiNote::as_select()).load(&mut con).await?
 	};
-	let remove_last=if let Some(note)=raw_tl.last(){
-		Some(&note.id)==opt.since_id.as_ref()||Some(&note.id)==opt.until_id.as_ref()
-	}else{
+	let remove_last = if let Some(note) = raw_tl.last() {
+		Some(&note.id) == opt.since_id.as_ref() || Some(&note.id) == opt.until_id.as_ref()
+	} else {
 		false
 	};
-	if remove_last{
-		raw_tl.remove(raw_tl.len()-1);
+	if remove_last {
+		raw_tl.remove(raw_tl.len() - 1);
 	}
-	let remove_first=if let Some(note)=raw_tl.get(0){
-		Some(&note.id)==opt.since_id.as_ref()||Some(&note.id)==opt.until_id.as_ref()
-	}else{
+	let remove_first = if let Some(note) = raw_tl.get(0) {
+		Some(&note.id) == opt.since_id.as_ref() || Some(&note.id) == opt.until_id.as_ref()
+	} else {
 		false
 	};
-	if remove_first{
+	if remove_first {
 		raw_tl.remove(0);
 	}
 	Ok(raw_tl)

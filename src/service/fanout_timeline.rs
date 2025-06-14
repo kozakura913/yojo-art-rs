@@ -1,5 +1,7 @@
 use std::{
-	borrow::Cow, collections::{HashMap, HashSet}, sync::Arc
+	borrow::Cow,
+	collections::{HashMap, HashSet},
+	sync::Arc,
 };
 
 use redis::{AsyncCommands, aio::MultiplexedConnection};
@@ -94,16 +96,21 @@ impl FanoutTimelineService {
 				opts,
 			)
 			.await?;
-
-		if notes.is_empty() || (!opts.allow_partial && ( notes.len() <= opts.limit.into())) {
-			let opts=if let Some(last)=notes.last(){
-				let mut opts=opts.clone();
-				opts.since_id=Some(last.id.clone());
+		let meta = self.meta_service.load(true).await.ok_or("db meta")?;
+		if meta.other.enable_fanout_timeline_db_fallback
+			&& (notes.is_empty() || (!opts.allow_partial && (notes.len() <= opts.limit.into())))
+		{
+			let opts = if let Some(last) = notes.last() {
+				let mut opts = opts.clone();
+				opts.since_id = Some(last.id.clone());
 				Cow::Owned(opts)
-			}else{
+			} else {
 				Cow::Borrowed(opts)
 			};
-			let (add_notes,add_relation_note)=self.timeline_service.get_htl(user_id, &mut user_cache, &opts).await?;
+			let (add_notes, add_relation_note) = self
+				.timeline_service
+				.get_htl(user_id, &mut user_cache, &opts)
+				.await?;
 			relation_note.extend(add_relation_note);
 			notes.extend_from_slice(&add_notes);
 		}
