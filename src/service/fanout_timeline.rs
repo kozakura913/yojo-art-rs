@@ -102,9 +102,9 @@ impl FanoutTimelineService {
 		{
 			let opts = if let Some(last) = notes.last() {
 				let mut opts = opts.clone();
-				if opts.since_id.is_some() && opts.until_id.is_none(){
+				if opts.since_id.is_some() && opts.until_id.is_none() {
 					opts.since_id = Some(last.id.clone());
-				}else{
+				} else {
 					opts.until_id = Some(last.id.clone());
 				}
 				Cow::Owned(opts)

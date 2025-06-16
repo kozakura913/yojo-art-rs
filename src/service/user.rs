@@ -8,7 +8,7 @@ use redis::{AsyncCommands, aio::MultiplexedConnection};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	DataBase, MisskeyConfig, ParsedMisskeyConfig, ServerError,
+	DataBase, ParsedMisskeyConfig, ServerError,
 	models::{
 		following::MiFollowing,
 		user::{MiAvatarDecoration, MiUser},
@@ -477,11 +477,7 @@ impl UserService {
 		//println!("avatar_decorations={:?}", user.avatar_decorations);
 		let mut con = self.db.get_read_only().await?;
 		let instance = match user.host.as_ref() {
-			Some(host) => Some(
-				self.instance_service
-					.fetch_connection((&mut con).into(), host)
-					.await?,
-			),
+			Some(host) => Some(self.instance_service.fetch_connection(host).await?),
 			None => None,
 		};
 		let meta = self.meta_service.load(false).await.ok_or("meta")?;
@@ -554,7 +550,7 @@ impl UserService {
 			}),
 			emojis: self
 				.emoji_service
-				.populate_emojis(&mut con, user.emojis, user.host)
+				.populate_emojis(user.emojis, user.host)
 				.await,
 			online_status,
 			set_federation_avatar_shape: user.set_federation_avatar_shape,

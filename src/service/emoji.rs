@@ -3,7 +3,7 @@ use std::{borrow::Cow, collections::HashMap, sync::Arc, time::Duration};
 use memory_cache::MemoryCache;
 use tokio::sync::{Mutex, RwLock};
 
-use crate::{DBConnection, DBConnectionRef, DataBase, models::emoji::MiEmoji};
+use crate::{DBConnection, DataBase, models::emoji::MiEmoji};
 #[derive(Clone, Debug)]
 pub struct ParsedEmoji {
 	name: Option<String>,
@@ -54,14 +54,12 @@ impl EmojiService {
 	 */
 	pub async fn populate_emojis(
 		&self,
-		con: &mut DBConnection<'_>,
 		emojis: Vec<String>,
 		user_host: Option<String>,
 	) -> HashMap<String, String> {
-		let con = Arc::new(Mutex::new(con));
 		let job = emojis
 			.iter()
-			.map(|emoji| self.populate_emoji(con.clone().into(), emoji.clone(), user_host.clone()));
+			.map(|emoji| self.populate_emoji(emoji.clone(), user_host.clone()));
 		let urls = futures::future::join_all(job).await;
 		let mut map = HashMap::new();
 		for (emoji, url) in emojis.into_iter().zip(urls) {
@@ -77,12 +75,7 @@ impl EmojiService {
 	 * @param user_host ノートやユーザープロフィールの所有者のホスト
 	 * @returns URL文字列。 Noneは未マッチを意味する
 	 */
-	pub async fn populate_emoji(
-		&self,
-		con: DBConnectionRef<'_, '_>,
-		emoji: String,
-		user_host: Option<String>,
-	) -> Option<String> {
+	pub async fn populate_emoji(&self, emoji: String, user_host: Option<String>) -> Option<String> {
 		let parsed = self.parse_emoji_str(&emoji, user_host);
 		let name = parsed.name.as_ref()?;
 		let host = parsed.host.as_ref()?;
@@ -99,28 +92,25 @@ impl EmojiService {
 					use crate::models::emoji::emoji::dsl::{host as dsl_host, name as dsl_name};
 					use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
 					use diesel_async::RunQueryDsl;
-					let query = emoji
+					emoji
 						.filter(dsl_name.eq(&name))
 						.filter(dsl_host.eq(&host))
-						.select(MiEmoji::as_select());
-					match con {
-						DBConnectionRef::Borrowed(con) => query.first(con).await,
-						DBConnectionRef::Mutex(m) => {
-							let mut con = m.lock().await;
-							query.first(&mut con).await
-						}
-						DBConnectionRef::New(db) => match db.get_read_only().await {
-							Ok(mut con) => query.first(&mut con).await,
-							Err(e) => {
-								eprintln!("{}:{} {:?}", file!(), line!(), e);
-								Err(diesel::result::Error::BrokenTransactionManager)
-							}
-						},
-					}
-					.map_err(|e| {
-						eprintln!("{}:{} {:?}", file!(), line!(), e);
-					})
-					.ok()
+						.select(MiEmoji::as_select())
+						.first(
+							&mut self
+								.db
+								.get_read_only()
+								.await
+								.map_err(|e| {
+									eprintln!("{}:{} {:?}", file!(), line!(), e);
+								})
+								.ok()?,
+						)
+						.await
+						.map_err(|e| {
+							eprintln!("{}:{} {:?}", file!(), line!(), e);
+						})
+						.ok()
 				}?;
 				let mut wl = self.cache.write().await;
 				wl.insert(key, emoji.clone(), Some(Duration::from_secs(5 * 60)));

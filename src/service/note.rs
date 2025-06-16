@@ -4,7 +4,7 @@ use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	DBConnection, DBConnectionRef, DataBase, MisskeyConfig, ServerError,
+	DBConnection, DataBase, MisskeyConfig, ServerError,
 	models::{
 		self,
 		common::SearchableTypes,
@@ -196,7 +196,7 @@ impl NoteService {
 			}
 			Some(
 				self.emoji_service
-					.populate_emojis(con, emojis, Some(host.clone()))
+					.populate_emojis(emojis, Some(host.clone()))
 					.await,
 			)
 		} else {
@@ -204,16 +204,15 @@ impl NoteService {
 		};
 		let reaction_emojis = self
 			.emoji_service
-			.populate_emojis(con, reaction_emoji_names, user.host.clone())
+			.populate_emojis(reaction_emoji_names, user.host.clone())
 			.await;
 		let event = if note.has_event {
-			self.populate_event(&mut con.into(), &note.id).await
+			self.populate_event(&note.id).await
 		} else {
 			None
 		};
 		let poll = if note.has_poll {
-			self.populate_poll(&mut con.into(), &note.id, Some(me_id))
-				.await
+			self.populate_poll(&note.id, Some(me_id)).await
 		} else {
 			None
 		};
@@ -316,34 +315,30 @@ impl NoteService {
 	}
 	pub async fn populate_poll(
 		&self,
-		con: &mut DBConnectionRef<'_, '_>,
 		note_id: &String,
 		me_id: Option<&String>,
 	) -> Option<PackedPoll> {
+		let mut con = self
+			.db
+			.get_read_only()
+			.await
+			.map_err(|e| {
+				eprintln!("{}:{} {:?}", file!(), line!(), e);
+			})
+			.ok()?;
 		let mi_poll: MiPoll = {
 			use crate::models::poll::poll::dsl::noteId;
 			use crate::models::poll::poll::dsl::poll;
 			use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
 			use diesel_async::RunQueryDsl;
-			let query = poll.filter(noteId.eq(note_id)).select(MiPoll::as_select());
-			match con {
-				DBConnectionRef::Borrowed(con) => query.first(*con).await,
-				DBConnectionRef::Mutex(m) => {
-					let mut con = m.lock().await;
-					query.first(&mut con).await
-				}
-				DBConnectionRef::New(db) => match db.get_read_only().await {
-					Ok(mut con) => query.first(&mut con).await,
-					Err(e) => {
-						eprintln!("{}:{} {:?}", file!(), line!(), e);
-						Err(diesel::result::Error::BrokenTransactionManager)
-					}
-				},
-			}
-			.map_err(|e| {
-				eprintln!("{}:{} {:?}", file!(), line!(), e);
-			})
-			.ok()
+			poll.filter(noteId.eq(note_id))
+				.select(MiPoll::as_select())
+				.first(&mut con)
+				.await
+				.map_err(|e| {
+					eprintln!("{}:{} {:?}", file!(), line!(), e);
+				})
+				.ok()
 		}?;
 		let mut choices: Vec<PackedPollChoices> = mi_poll
 			.choices
@@ -364,28 +359,16 @@ impl NoteService {
 				use crate::models::poll_vote::poll_vote::dsl::{noteId, userId};
 				use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
 				use diesel_async::RunQueryDsl;
-				let query = poll_vote
+				poll_vote
 					.filter(noteId.eq(note_id))
 					.filter(userId.eq(me_id))
-					.select(MiPollVote::as_select());
-				match con {
-					DBConnectionRef::Borrowed(con) => query.load(con).await,
-					DBConnectionRef::Mutex(m) => {
-						let mut con = m.lock().await;
-						query.load(&mut con).await
-					}
-					DBConnectionRef::New(db) => match db.get_read_only().await {
-						Ok(mut con) => query.load(&mut con).await,
-						Err(e) => {
-							eprintln!("{}:{} {:?}", file!(), line!(), e);
-							Err(diesel::result::Error::BrokenTransactionManager)
-						}
-					},
-				}
-				.map_err(|e| {
-					eprintln!("{}:{} {:?}", file!(), line!(), e);
-				})
-				.ok()
+					.select(MiPollVote::as_select())
+					.load(&mut con)
+					.await
+					.map_err(|e| {
+						eprintln!("{}:{} {:?}", file!(), line!(), e);
+					})
+					.ok()
 			};
 			if let Some(mut votes) = votes {
 				if !mi_poll.multiple {
@@ -408,37 +391,29 @@ impl NoteService {
 			choices,
 		})
 	}
-	pub async fn populate_event(
-		&self,
-		con: &mut DBConnectionRef<'_, '_>,
-		note_id: &String,
-	) -> Option<PackedEvent> {
+	pub async fn populate_event(&self, note_id: &String) -> Option<PackedEvent> {
+		let mut con = self
+			.db
+			.get_read_only()
+			.await
+			.map_err(|e| {
+				eprintln!("{}:{} {:?}", file!(), line!(), e);
+			})
+			.ok()?;
 		let event: MiEvent = {
 			use crate::models::event::event::dsl::event;
 			use crate::models::event::event::dsl::noteId;
 			use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
 			use diesel_async::RunQueryDsl;
-			let query = event
+			event
 				.filter(noteId.eq(note_id))
-				.select(MiEvent::as_select());
-			match con {
-				DBConnectionRef::Borrowed(con) => query.first(con).await,
-				DBConnectionRef::Mutex(m) => {
-					let mut con = m.lock().await;
-					query.first(&mut con).await
-				}
-				DBConnectionRef::New(db) => match db.get_read_only().await {
-					Ok(mut con) => query.first(&mut con).await,
-					Err(e) => {
-						eprintln!("{}:{} {:?}", file!(), line!(), e);
-						Err(diesel::result::Error::BrokenTransactionManager)
-					}
-				},
-			}
-			.map_err(|e| {
-				eprintln!("{}:{} {:?}", file!(), line!(), e);
-			})
-			.ok()
+				.select(MiEvent::as_select())
+				.first(&mut con)
+				.await
+				.map_err(|e| {
+					eprintln!("{}:{} {:?}", file!(), line!(), e);
+				})
+				.ok()
 		}?;
 		Some(PackedEvent {
 			title: event.title,

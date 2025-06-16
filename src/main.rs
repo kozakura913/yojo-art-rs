@@ -1,11 +1,10 @@
 use std::{io::Write, net::SocketAddr, sync::Arc};
 
 use axum::{
-	Router,
 	http::StatusCode,
 	response::{IntoResponse, Response},
 };
-use diesel_async::{AsyncPgConnection, pooled_connection::PoolError};
+use diesel_async::AsyncPgConnection;
 use redis::aio::MultiplexedConnection;
 use s3::Bucket;
 use serde::{Deserialize, Serialize};
@@ -15,7 +14,6 @@ use service::{
 	id_service::IdService, instance::InstanceService, meta::MetaService, note::NoteService,
 	role::RoleService, token_service::TokenService, user::UserService,
 };
-use tokio::sync::Mutex;
 
 use crate::service::timeline::TimelineService;
 mod api;
@@ -508,34 +506,6 @@ pub struct DataBase(diesel_async::pooled_connection::bb8::Pool<AsyncPgConnection
 pub type DBConnection<'a> =
 	diesel_async::pooled_connection::bb8::PooledConnection<'a, AsyncPgConnection>;
 
-pub enum DBConnectionRef<'a, 'b> {
-	Borrowed(&'b mut DBConnection<'a>),
-	Mutex(Arc<Mutex<&'b mut DBConnection<'a>>>),
-	New(&'b DataBase),
-}
-impl<'a, 'b> From<&'b mut DBConnection<'a>> for DBConnectionRef<'a, 'b> {
-	fn from(value: &'b mut DBConnection<'a>) -> Self {
-		Self::Borrowed(value)
-	}
-}
-impl<'a, 'b> From<Arc<Mutex<&'b mut DBConnection<'a>>>> for DBConnectionRef<'a, 'b> {
-	fn from(value: Arc<Mutex<&'b mut DBConnection<'a>>>) -> Self {
-		Self::Mutex(value)
-	}
-}
-impl<'a, 'b> From<&'b DataBase> for DBConnectionRef<'a, 'b> {
-	fn from(value: &'b DataBase) -> Self {
-		Self::New(value)
-	}
-}
-impl<'a, 'b> DBConnectionRef<'a, 'b> {
-	pub fn new_mutex(value: &'b mut DBConnection<'a>) -> Self {
-		Self::Mutex(Arc::new(Mutex::new(value)))
-	}
-	pub fn new_db(value: &'b DataBase) -> Self {
-		Self::New(value)
-	}
-}
 impl DataBase {
 	pub async fn open(database_url: &str) -> Result<Self, String> {
 		let config = diesel_async::pooled_connection::AsyncDieselConnectionManager::<

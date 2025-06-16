@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
 use diesel_async::RunQueryDsl;
 
-use crate::{DBConnection, DBConnectionRef, DataBase, ServerError, models::instance::MiInstance};
+use crate::{DBConnection, DataBase, ServerError, models::instance::MiInstance};
 
 #[derive(Clone, Debug)]
 pub struct InstanceService {
@@ -18,14 +18,9 @@ impl InstanceService {
 		Self { db, redis }
 	}
 	pub async fn fetch(&self, host: impl AsRef<str>) -> Result<MiInstance, ServerError> {
-		let mut con = self.db.get_read_only().await?;
-		self.fetch_connection((&mut con).into(), host).await
+		self.fetch_connection(host).await
 	}
-	pub async fn fetch_connection(
-		&self,
-		con: DBConnectionRef<'_, '_>,
-		host: impl AsRef<str>,
-	) -> Result<MiInstance, ServerError> {
+	pub async fn fetch_connection(&self, host: impl AsRef<str>) -> Result<MiInstance, ServerError> {
 		let host_name = host.as_ref();
 		let mut redis = self.redis.clone();
 		let cache = redis
@@ -37,28 +32,14 @@ impl InstanceService {
 		}
 
 		let res: MiInstance = {
+			let mut con = self.db.get_read_only().await?;
 			use crate::models::instance::instance::dsl::instance;
 			use crate::models::instance::instance::dsl::*;
-			let query = instance
+			instance
 				.filter(host.eq(host_name))
-				.select(MiInstance::as_select());
-			match con {
-				DBConnectionRef::Borrowed(con) => query.first(con).await,
-				DBConnectionRef::Mutex(m) => {
-					let mut con = m.lock().await;
-					query.first(&mut con).await
-				}
-				DBConnectionRef::New(db) => match db.get_read_only().await {
-					Ok(mut con) => query.first(&mut con).await,
-					Err(e) => {
-						eprintln!("{}:{} {:?}", file!(), line!(), e);
-						Err(diesel::result::Error::BrokenTransactionManager)
-					}
-				},
-			}
-			.map_err(|e| {
-				eprintln!("{}:{} {:?}", file!(), line!(), e);
-			})
+				.select(MiInstance::as_select())
+				.first(&mut con)
+				.await
 		}?;
 		if let Ok(json) = serde_json::to_string(&res) {
 			let redis_res = redis
