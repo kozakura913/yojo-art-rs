@@ -362,17 +362,11 @@ fn main() {
 			emoji_service.clone(),
 			event_service.clone(),
 		);
-		let timeline_service =
-			TimelineService::new(db.clone(), note_service.clone(), id_service.clone());
+		let timeline_service = TimelineService::new(db.clone());
 		let fanout_timeline_service = FanoutTimelineService::new(
 			parsed_misskey_config.clone(),
 			db.clone(),
 			meta_service.clone(),
-			role_service.clone(),
-			id_service,
-			user_service.clone(),
-			event_service.clone(),
-			note_service.clone(),
 			redis_for_timelines,
 			timeline_service.clone(),
 		);

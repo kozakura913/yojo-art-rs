@@ -69,9 +69,8 @@ impl NoteService {
 	}
 	pub async fn pack_detail(
 		&self,
-		con: &mut DBConnection<'_>,
 		note: MiNote,
-		me_id: &String,
+		me_id: Option<&String>,
 		user_cache: &mut HashMap<String, MiUser>,
 		note_cache: &mut HashMap<String, PackedNote>,
 		note_hint: &HashMap<String, MiNote>,
@@ -83,9 +82,12 @@ impl NoteService {
 					None => {
 						let note = match note_hint.get(reply_id) {
 							Some(note) => note.clone(),
-							None => MiNote::load_by_id(con, reply_id).await?,
+							None => {
+								MiNote::load_by_id(&mut self.db.get_read_only().await?, reply_id)
+									.await?
+							}
 						};
-						let packed = self.pack(con, note, me_id, user_cache).await?;
+						let packed = self.pack(note, me_id, user_cache).await?;
 						note_cache.insert(packed.id.clone(), packed.clone());
 						packed
 					}
@@ -101,9 +103,12 @@ impl NoteService {
 					None => {
 						let note = match note_hint.get(renote_id) {
 							Some(note) => note.clone(),
-							None => MiNote::load_by_id(con, renote_id).await?,
+							None => {
+								MiNote::load_by_id(&mut self.db.get_read_only().await?, renote_id)
+									.await?
+							}
 						};
-						let packed = self.pack(con, note, me_id, user_cache).await?;
+						let packed = self.pack(note, me_id, user_cache).await?;
 						note_cache.insert(packed.id.clone(), packed.clone());
 						packed
 					}
@@ -112,7 +117,7 @@ impl NoteService {
 			}
 			None => None,
 		};
-		let mut packed_note = self.pack(con, note, me_id, user_cache).await?;
+		let mut packed_note = self.pack(note, me_id, user_cache).await?;
 		packed_note.renote = renote;
 		packed_note.reply = reply;
 		Ok(packed_note)
@@ -120,15 +125,15 @@ impl NoteService {
 	/* renoteとreplyを処理しない */
 	pub async fn pack(
 		&self,
-		con: &mut DBConnection<'_>,
 		note: MiNote,
-		me_id: &String,
+		me_id: Option<&String>,
 		user_cache: &mut HashMap<String, MiUser>,
 	) -> Result<PackedNote, ServerError> {
 		let user = match user_cache.get(&note.user_id) {
 			Some(u) => u,
 			None => {
-				let u = MiUser::load_by_id(con, &note.user_id).await?;
+				let u =
+					MiUser::load_by_id(&mut self.db.get_read_only().await?, &note.user_id).await?;
 				user_cache.insert(note.user_id.clone(), u);
 				user_cache.get(&note.user_id).ok_or("no user")?
 			}
@@ -170,15 +175,23 @@ impl NoteService {
 				drive_file
 					.filter(id.eq_any(&note.file_ids))
 					.select(MiDriveFile::as_select())
-					.load(con)
+					.load(&mut self.db.get_read_only().await?)
 					.await
 			}?;
 			let mut packed_files = Vec::new();
 			for f in files.iter() {
-				let is_my_file = f.user_id.as_ref() == Some(me_id);
+				let is_my_file = me_id.is_some() && f.user_id.as_ref() == me_id;
 				let packed = self
 					.drive_service
-					.pack(con, f, is_my_file, false, false, None, Some(&user))
+					.pack(
+						&mut self.db.get_read_only().await?,
+						f,
+						is_my_file,
+						false,
+						false,
+						None,
+						Some(&user),
+					)
 					.await;
 				packed_files.push(packed.ok_or("pack file")?);
 			}
@@ -212,18 +225,18 @@ impl NoteService {
 			None
 		};
 		let poll = if note.has_poll {
-			self.populate_poll(&note.id, Some(me_id)).await
+			self.populate_poll(&note.id, me_id).await
 		} else {
 			None
 		};
 		let user = self.user_service.pack_lite(user.clone()).await?;
 		let created_at = self.id_service.parse(&note.id).ok_or("parse id")?;
-		let my_reaction = if reaction_count < 1 {
+		let my_reaction = if reaction_count < 1 || me_id.is_none() {
 			None
 		} else if reaction_count as usize <= note.reaction_and_user_pair_cache.len() {
 			let mut reactions: Vec<String> = Vec::new();
 			for cache in note.reaction_and_user_pair_cache.iter() {
-				if !cache.starts_with(me_id) {
+				if !cache.starts_with(me_id.unwrap()) {
 					continue;
 				}
 				let mut split = cache.split('/');
@@ -246,9 +259,9 @@ impl NoteService {
 					use diesel_async::RunQueryDsl;
 					note_reaction
 						.filter(noteId.eq(&note.id))
-						.filter(userId.eq(&me_id))
+						.filter(userId.eq(&me_id.unwrap()))
 						.select(MiNoteReaction::as_select())
-						.load(con)
+						.load(&mut self.db.get_read_only().await?)
 						.await
 				}?;
 				let reactions: Vec<String> =

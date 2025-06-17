@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use axum::{http::StatusCode, response::IntoResponse};
+use redis::AsyncCommands;
 use serde::Deserialize;
 
 use crate::{
@@ -27,6 +28,8 @@ pub struct RequestParams {
 	until_id: Option<String>,
 	#[serde(rename = "sinceId")]
 	since_id: Option<String>,
+	#[serde(rename = "withReplies")]
+	with_replies: Option<bool>,
 }
 pub async fn post(
 	axum::extract::State(ctx): axum::extract::State<std::sync::Arc<Context>>,
@@ -34,7 +37,7 @@ pub async fn post(
 ) -> Result<axum::response::Response, ServerError> {
 	let permission = ctx.token_service.get_permission(&parms.i).await;
 	let meta = ctx.meta_service.load(true).await.ok_or("fetch meta")?;
-	let user_id = permission.as_user_id().await.ok_or("token")?;
+	let user_id = permission.as_user_id().await;
 	let opts = TLOptions {
 		since_id: parms.since_id,
 		until_id: parms.until_id,
@@ -43,17 +46,17 @@ pub async fn post(
 		allow_partial: parms.allow_partial.unwrap_or(true),
 		with_cats: parms.with_cats.unwrap_or(false),
 		limit: parms.limit.unwrap_or(10),
-		with_replies: false,
+		with_replies: parms.with_replies.unwrap_or(false),
 	};
 	let mut user_cache = HashMap::new();
 	let mut hints = TimelineHints::default();
 	let notes = if meta.other.enable_fanout_timeline {
 		ctx.fanout_timeline_service
-			.get_htl(user_id, &mut hints, &opts)
+			.get_ltl(user_id, &mut hints, &opts)
 			.await
 	} else {
 		ctx.timeline_service
-			.get_htl(user_id, &mut hints, &opts)
+			.get_ltl(user_id, &mut hints, &opts)
 			.await
 	}?;
 	let mut note_cache = HashMap::new();
@@ -63,7 +66,7 @@ pub async fn post(
 			.note_service
 			.pack_detail(
 				note,
-				Some(user_id),
+				user_id,
 				&mut user_cache,
 				&mut note_cache,
 				&mut hints.note_relation_note,

@@ -1,27 +1,12 @@
-use std::{
-	borrow::Cow,
-	collections::{HashMap, HashSet},
-};
-
-use chrono::Duration;
-
 use crate::{
-	DBConnection, DataBase, ServerError,
-	models::{
-		blocking::MiBlocking, following::MiFollowing, muting::MiMuting, note::MiNote,
-		renote_muting::MiRenoteMuting, user::MiUser, user_profile::MiUserProfile,
-	},
-	service::{
-		id_service::IdService,
-		note::{NoteService, PackedNote},
-	},
+	DataBase, ServerError,
+	models::{note::MiNote, user::MiUser, user_profile::MiUserProfile},
 };
+use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug)]
 pub struct TimelineService {
 	db: DataBase,
-	note_service: NoteService,
-	id_service: IdService,
 	//TODO キャッシュ
 }
 #[derive(Clone, Debug)]
@@ -32,6 +17,7 @@ pub struct TLOptions {
 	pub with_renotes: bool,
 	pub allow_partial: bool,
 	pub with_cats: bool,
+	pub with_replies: bool,
 	pub limit: u16,
 }
 #[derive(Default)]
@@ -42,130 +28,122 @@ pub struct TimelineHints {
 	pub muted_instances: Option<HashSet<String>>,
 	pub renote_muting_user: Option<HashSet<String>>,
 	pub is_muting_user: HashMap<String, bool>,
+	pub user_cache: HashMap<String, MiUser>,
 }
 impl TimelineService {
-	pub fn new(db: DataBase, note_service: NoteService, id_service: IdService) -> Self {
-		Self {
-			db,
-			note_service,
-			id_service,
-		}
+	pub fn new(db: DataBase) -> Self {
+		Self { db }
 	}
-	pub async fn home_tl(
+	pub async fn get_ltl(
 		&self,
-		user_id: &String,
+		me_id: Option<&String>,
+		hints: &mut TimelineHints,
 		opts: &TLOptions,
-	) -> Result<Vec<PackedNote>, ServerError> {
-		let mut con = self.db.get_read_only().await?;
-		let mut user_cache = HashMap::new();
-		let (notes, relation_note) = self.get_htl(user_id, &mut user_cache, opts).await?;
-		let mut note_cache = HashMap::new();
-		let mut packed_notes = vec![];
-		for note in notes {
-			let packed_note = self
-				.note_service
-				.pack_detail(
-					&mut con,
-					note,
-					user_id,
-					&mut user_cache,
-					&mut note_cache,
-					&relation_note,
+	) -> Result<Vec<MiNote>, ServerError> {
+		let mut notes: Vec<MiNote> = Vec::new();
+		let mut exclude_users = HashSet::new();
+		for _ in 0..100 {
+			let start = chrono::Utc::now();
+			let mut append_notes: Vec<MiNote> = match self.raw_ltl(me_id, &opts, hints).await {
+				Ok(v) => v,
+				Err(e) => {
+					if notes.is_empty() {
+						return Err(e.into());
+					} else {
+						return Ok(notes);
+					}
+				}
+			};
+			println!(
+				"raw LTL {}ms",
+				(chrono::Utc::now() - start).num_milliseconds()
+			);
+			if append_notes.is_empty() {
+				return Ok(notes);
+			}
+			let start = chrono::Utc::now();
+			let _ = self
+				.filter_note(
+					&mut append_notes,
+					me_id,
+					&mut exclude_users,
+					hints,
+					opts.with_cats,
 				)
 				.await?;
-			packed_notes.push(packed_note);
+			println!(
+				"filter_note {}ms",
+				(chrono::Utc::now() - start).num_milliseconds()
+			);
+			if !append_notes.is_empty() {
+				notes.extend_from_slice(&append_notes);
+			}
+			if !notes.is_empty() && (opts.allow_partial || notes.len() > opts.limit.into()) {
+				return Ok(notes);
+			}
 		}
-		Ok(packed_notes)
+		Ok(notes)
 	}
 	pub async fn get_htl(
 		&self,
 		me_id: &String,
-		user_cache: &mut HashMap<String, MiUser>,
+		hints: &mut TimelineHints,
 		opts: &TLOptions,
-	) -> Result<(Vec<MiNote>, HashMap<String, MiNote>), ServerError> {
+	) -> Result<Vec<MiNote>, ServerError> {
 		let mut notes: Vec<MiNote> = Vec::new();
 		let mut exclude_users = HashSet::new();
-		let mut hints = TimelineHints {
-			..Default::default()
-		};
 		for _ in 0..100 {
-			let mut append_notes: Vec<MiNote> =
-				match self.raw_htl(me_id, user_cache, &opts, &mut hints).await {
-					Ok(v) => v,
-					Err(e) => {
-						if notes.is_empty() {
-							return Err(e.into());
-						} else {
-							return Ok((notes, hints.note_relation_note));
-						}
+			let mut append_notes: Vec<MiNote> = match self.raw_htl(me_id, &opts, hints).await {
+				Ok(v) => v,
+				Err(e) => {
+					if notes.is_empty() {
+						return Err(e.into());
+					} else {
+						return Ok(notes);
 					}
-				};
+				}
+			};
 			if append_notes.is_empty() {
-				return Ok((notes, hints.note_relation_note));
+				return Ok(notes);
 			}
 			let _ = self
 				.filter_note(
-					&mut (&self.db).get_read_only().await?,
 					&mut append_notes,
 					Some(me_id),
 					&mut exclude_users,
-					&mut hints,
+					hints,
+					opts.with_cats,
 				)
 				.await?;
 			if !append_notes.is_empty() {
-				if opts.with_cats {
-					let user_ids: Vec<String> = append_notes
-						.iter()
-						.filter_map(|note| {
-							if user_cache.contains_key(&note.user_id) {
-								None
-							} else {
-								Some(note.user_id.clone())
-							}
-						})
-						.collect();
-					if !user_ids.is_empty() {
-						let append_users =
-							MiUser::load_by_ids(&mut (&self.db).get_read_only().await?, &user_ids)
-								.await?;
-						user_cache
-							.extend(append_users.into_iter().map(|user| (user.id.clone(), user)));
-					}
-					append_notes.retain(|note| {
-						if let Some(user) = user_cache.get(&note.user_id) {
-							user.is_cat
-						} else {
-							false
-						}
-					});
-				}
 				notes.extend_from_slice(&append_notes);
 			}
 			if !notes.is_empty() && (opts.allow_partial || notes.len() > opts.limit.into()) {
-				break;
+				return Ok(notes);
 			}
 		}
-		Ok((notes, hints.note_relation_note))
+		Ok(notes)
 	}
+	/*全TL共通ミュート、ブロック、with_cats処理 */
 	pub async fn filter_note(
 		&self,
-		con: &mut DBConnection<'_>,
 		notes: &mut Vec<MiNote>,
 		me_id: Option<&String>,
 		exclude_users: &mut HashSet<String>,
 		hint: &mut TimelineHints,
+		with_cats: bool,
 	) -> Result<(), ServerError> {
 		if notes.is_empty() {
 			return Ok(());
 		}
-		use diesel::ExpressionMethods;
-		use diesel::{QueryDsl, SelectableHelper};
+		use diesel::{ExpressionMethods, QueryDsl};
 		use diesel_async::RunQueryDsl;
 		let mut note_relation_user_ids = HashSet::new();
 		for note in notes.iter() {
 			if let Some(reply_id) = note.reply_id.as_ref() {
 				if !hint.note_relation_note.contains_key(reply_id) {
-					let reply = MiNote::load_by_id(con, reply_id).await?;
+					let reply =
+						MiNote::load_by_id(&mut self.db.get_read_only().await?, reply_id).await?;
 					//TLから除外するユーザーであればユーザー情報を取得する必要はない
 					if !exclude_users.contains(&reply.user_id) {
 						note_relation_user_ids.insert(reply.user_id.clone());
@@ -175,7 +153,8 @@ impl TimelineService {
 			}
 			if let Some(renote_id) = note.renote_id.as_ref() {
 				if !hint.note_relation_note.contains_key(renote_id) {
-					let renote = MiNote::load_by_id(con, renote_id).await?;
+					let renote =
+						MiNote::load_by_id(&mut self.db.get_read_only().await?, renote_id).await?;
 					if !exclude_users.contains(&renote.user_id) {
 						note_relation_user_ids.insert(renote.user_id.clone());
 					}
@@ -199,29 +178,42 @@ impl TimelineService {
 				}
 			}
 			if !note_relation_user_ids.is_empty() {
-				use crate::models::blocking::blocking::dsl::blocking;
-				use crate::models::blocking::blocking::dsl::*;
-				let res: Vec<MiBlocking> = blocking
-					.filter(blockerId.eq(me_id))
-					.filter(blockeeId.eq_any(&note_relation_user_ids))
-					.select(MiBlocking::as_select())
-					.load(con)
-					.await?;
-				for block in res {
-					exclude_users.insert(block.blockee_id);
+				let f_block = async {
+					use crate::models::blocking::blocking::dsl::blocking;
+					use crate::models::blocking::blocking::dsl::*;
+					let res: Result<Vec<String>, ServerError> = {
+						let res = blocking
+							.filter(blockerId.eq(me_id))
+							.filter(blockeeId.eq_any(&note_relation_user_ids))
+							.select(blockeeId)
+							.load(&mut self.db.get_read_only().await?)
+							.await?;
+						Ok(res)
+					};
+					res
+				};
+				let f_mute = async {
+					use crate::models::muting::muting::dsl::muting;
+					use crate::models::muting::muting::dsl::*;
+					let res: Result<Vec<String>, ServerError> = {
+						let res = muting
+							.filter(muterId.eq(me_id))
+							.filter(muteeId.eq_any(&note_relation_user_ids))
+							.select(muteeId)
+							.load(&mut self.db.get_read_only().await?)
+							.await?;
+						Ok(res)
+					};
+					res
+				};
+				let (blocks, mutes) = futures_util::future::join(f_block, f_mute).await;
+				let blocks = blocks?;
+				let mutes = mutes?;
+				for blockee_id in blocks {
+					exclude_users.insert(blockee_id);
 				}
-			}
-			if !note_relation_user_ids.is_empty() {
-				use crate::models::muting::muting::dsl::muting;
-				use crate::models::muting::muting::dsl::*;
-				let res: Vec<MiMuting> = muting
-					.filter(muterId.eq(me_id))
-					.filter(muteeId.eq_any(&note_relation_user_ids))
-					.select(MiMuting::as_select())
-					.load(con)
-					.await?;
-				for mute in res {
-					exclude_users.insert(mute.mutee_id);
+				for mutee_id in mutes {
+					exclude_users.insert(mutee_id);
 				}
 			}
 
@@ -300,12 +292,137 @@ impl TimelineService {
 				return true;
 			});
 		}
+		if with_cats {
+			let user_ids: Vec<String> = notes
+				.iter()
+				.filter_map(|note| {
+					if hint.user_cache.contains_key(&note.user_id) {
+						None
+					} else {
+						Some(note.user_id.clone())
+					}
+				})
+				.collect();
+			if !user_ids.is_empty() {
+				let append_users =
+					MiUser::load_by_ids(&mut (&self.db).get_read_only().await?, &user_ids).await?;
+				hint.user_cache
+					.extend(append_users.into_iter().map(|user| (user.id.clone(), user)));
+			}
+			notes.retain(|note| {
+				if let Some(user) = hint.user_cache.get(&note.user_id) {
+					user.is_cat
+				} else {
+					false
+				}
+			});
+		}
 		Ok(())
+	}
+	async fn raw_ltl(
+		&self,
+		me_id: Option<&String>,
+		opt: &TLOptions,
+		hint: &mut TimelineHints,
+	) -> Result<Vec<MiNote>, ServerError> {
+		use diesel::ExpressionMethods;
+		use diesel::{QueryDsl, SelectableHelper};
+		use diesel_async::RunQueryDsl;
+		let mut exclude_users = vec![];
+		let muted_instances = if let Some(me_id) = me_id {
+			let hint_muted_instances = &mut hint.muted_instances;
+			let f_muted_instances = async {
+				if hint_muted_instances.is_none() {
+					hint_muted_instances.replace(self.muted_instances(me_id).await?);
+				}
+				Ok::<&HashSet<std::string::String>, diesel::result::Error>(
+					hint_muted_instances.as_ref().unwrap(),
+				)
+			};
+			let muted_instances = f_muted_instances.await;
+			muted_instances?.iter().collect::<Vec<_>>()
+		} else {
+			Vec::new()
+		};
+
+		//with_cats処理かミュート処理が必要
+		if opt.with_cats || me_id.is_some() {
+			for user in hint.user_cache.values() {
+				if user.host.is_some() {
+					//リモートユーザーは元々除外
+					continue;
+				}
+				//ミュートユーザーを除外
+				if *hint.is_muting_user.get(&user.id).unwrap_or(&false) {
+					exclude_users.push(&user.id);
+					continue;
+				}
+				//catではない事が明らかな場合は除外
+				if opt.with_cats && user.is_cat {
+					exclude_users.push(&user.id);
+				}
+			}
+		}
+
+		let mut con = self.db.get_read_only().await?;
+		let mut raw_tl: Vec<MiNote> = {
+			use crate::models::note::note::dsl::note;
+			use crate::models::note::note::dsl::*;
+			use diesel::BoolExpressionMethods;
+			let mut query = note
+				.filter(userHost.is_null())
+				.filter(userId.ne_all(&exclude_users))
+				.filter(userHost.ne_all(&muted_instances))
+				.into_boxed();
+			if !opt.with_renotes {
+				query = query.filter(
+					renoteId.is_null().or(text
+						.is_not_null()
+						//.or(fileIds.ne(Vec::<String>::new()))
+						.or(cw.is_not_null())
+						.or(replyId.is_not_null())
+						.or(hasPoll.eq(true))),
+				);
+			}
+			if opt.with_files {
+				//TODO yojo-art 1.5.0時点ではfileIdsがVarChar[]型でdiesel側仕様でVarChar型が扱えない(Textとして扱われる)都合で型エラーを起こす
+				//q = q.filter(fileIds.ne(Vec::<String>::new()));
+			}
+			if opt.since_id.is_some() && opt.until_id.is_none() {
+				query = query.order(id.asc());
+			} else {
+				query = query.order(id.desc());
+			}
+			query = match (opt.since_id.as_ref(), opt.until_id.as_ref()) {
+				(Some(since_id), Some(until_id)) => query.filter(id.between(since_id, until_id)),
+				(Some(since_id), None) => query.filter(id.ge(since_id)),
+				(None, Some(until_id)) => query.filter(id.le(until_id)),
+				(None, None) => query,
+			};
+			query = query.limit(opt.limit.into());
+			query.select(MiNote::as_select()).load(&mut con).await?
+		};
+		let remove_last = if let Some(note) = raw_tl.last() {
+			Some(&note.id) == opt.since_id.as_ref() || Some(&note.id) == opt.until_id.as_ref()
+		} else {
+			false
+		};
+		if remove_last {
+			raw_tl.remove(raw_tl.len() - 1);
+		}
+		let remove_first = if let Some(note) = raw_tl.get(0) {
+			Some(&note.id) == opt.since_id.as_ref() || Some(&note.id) == opt.until_id.as_ref()
+		} else {
+			false
+		};
+		if remove_first {
+			raw_tl.remove(0);
+		}
+		Ok(raw_tl)
 	}
 	async fn raw_htl(
 		&self,
 		me_id: &str,
-		user_cache: &mut HashMap<String, MiUser>,
 		opt: &TLOptions,
 		hint: &mut TimelineHints,
 	) -> Result<Vec<MiNote>, ServerError> {
@@ -337,7 +454,7 @@ impl TimelineService {
 
 		if opt.with_cats {
 			//フォローユーザーでもcatではない事が明らかな場合は除外
-			following.retain(|f| user_cache.get(*f).map(|u| u.is_cat).unwrap_or(true));
+			following.retain(|f| hint.user_cache.get(*f).map(|u| u.is_cat).unwrap_or(true));
 		}
 
 		let mut con = self.db.get_read_only().await?;
