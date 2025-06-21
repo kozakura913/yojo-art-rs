@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use std::collections::{HashMap, HashSet};
 use strum_macros::{Display, EnumString};
-use yojo_art_utils::{PgJson, PgString};
+use yojo_art_utils::{PgEnum, PgJson, PgString};
 
 use super::{common::SearchableTypes, following::MiFollowing};
 use crate::DBConnection;
@@ -41,7 +41,7 @@ diesel::table! {
 		repliesCount -> SmallInt,
 		clippedCount -> SmallInt,
 		reactions -> Jsonb,
-		visibility -> VarChar,
+		visibility -> crate::models::note::NoteVisibilityType,
 		searchableBy -> Nullable<VarChar>,
 		uri -> Nullable<VarChar>,
 		url -> Nullable<VarChar>,
@@ -193,9 +193,10 @@ pub struct MiReactions(pub HashMap<String, i32>);
 	AsExpression,
 	Serialize,
 	Deserialize,
-	PgString,
+	PgEnum,
 )]
-#[diesel(sql_type = VarChar)]
+#[diesel(sql_type = NoteVisibilityType)]
+#[pg_type(sql_type = "NoteVisibilityType")]
 pub enum NoteVisibility {
 	#[default]
 	#[strum(serialize = "public")]
@@ -215,6 +216,9 @@ pub enum NoteVisibility {
 	/** visibleUserIds で指定したユーザーのみ */
 	Specified,
 }
+#[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
+#[diesel(postgres_type(name = "note_visibility_enum"))]
+pub struct NoteVisibilityType;
 impl MiNote {
 	pub async fn load_by_id(
 		con: &mut DBConnection<'_>,

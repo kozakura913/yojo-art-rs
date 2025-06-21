@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::Router;
 
-use crate::Context;
+use crate::{Context, api::notes::hybrid_timeline};
 
 use super::{default_route, drive, notes};
 
@@ -26,6 +26,7 @@ pub fn route<S>(ctx: &Context) -> Router<S> {
 	let r = endpoint!(r, drive::files::multipart::abort::post);
 	let r = endpoint!(r, notes::timeline::post);
 	let r = endpoint!(r, notes::local_timeline::post);
+	let r = endpoint!(r, notes::hybrid_timeline::post);
 
 	let r = r.route("/streaming", axum::routing::get(default_route::streaming));
 	let r = r.route("/*path", axum::routing::post(default_route::post));

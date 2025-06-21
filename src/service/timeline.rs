@@ -1,6 +1,10 @@
 use crate::{
 	DataBase, ServerError,
-	models::{note::MiNote, user::MiUser, user_profile::MiUserProfile},
+	models::{
+		note::{MiNote, NoteVisibility},
+		user::MiUser,
+		user_profile::MiUserProfile,
+	},
 };
 use std::collections::{HashMap, HashSet};
 
@@ -33,6 +37,56 @@ pub struct TimelineHints {
 impl TimelineService {
 	pub fn new(db: DataBase) -> Self {
 		Self { db }
+	}
+	pub async fn get_stl(
+		&self,
+		me_id: &String,
+		hints: &mut TimelineHints,
+		opts: &TLOptions,
+	) -> Result<Vec<MiNote>, ServerError> {
+		let mut notes: Vec<MiNote> = Vec::new();
+		let mut exclude_users = HashSet::new();
+		for _ in 0..100 {
+			let start = chrono::Utc::now();
+			let mut append_notes: Vec<MiNote> = match self.raw_stl(me_id, &opts, hints).await {
+				Ok(v) => v,
+				Err(e) => {
+					if notes.is_empty() {
+						return Err(e.into());
+					} else {
+						return Ok(notes);
+					}
+				}
+			};
+			println!(
+				"raw STL {}ms",
+				(chrono::Utc::now() - start).num_milliseconds()
+			);
+			if append_notes.is_empty() {
+				return Ok(notes);
+			}
+			let start = chrono::Utc::now();
+			let _ = self
+				.filter_note(
+					&mut append_notes,
+					Some(me_id),
+					&mut exclude_users,
+					hints,
+					opts.with_cats,
+				)
+				.await?;
+			println!(
+				"filter_note {}ms",
+				(chrono::Utc::now() - start).num_milliseconds()
+			);
+			if !append_notes.is_empty() {
+				notes.extend_from_slice(&append_notes);
+			}
+			if !notes.is_empty() && (opts.allow_partial || notes.len() > opts.limit.into()) {
+				return Ok(notes);
+			}
+		}
+		Ok(notes)
 	}
 	pub async fn get_ltl(
 		&self,
@@ -319,6 +373,123 @@ impl TimelineService {
 		}
 		Ok(())
 	}
+	async fn raw_stl(
+		&self,
+		me_id: &str,
+		opt: &TLOptions,
+		hint: &mut TimelineHints,
+	) -> Result<Vec<MiNote>, ServerError> {
+		use diesel::ExpressionMethods;
+		use diesel::{QueryDsl, SelectableHelper};
+		use diesel_async::RunQueryDsl;
+		let followings_user = &mut hint.followings_user;
+		let f_following = async {
+			if followings_user.is_none() {
+				followings_user.replace(self.followings(me_id).await?);
+			}
+			Ok::<&HashSet<std::string::String>, diesel::result::Error>(
+				followings_user.as_ref().unwrap(),
+			)
+		};
+		let hint_muted_instances = &mut hint.muted_instances;
+		let f_muted_instances = async {
+			if hint_muted_instances.is_none() {
+				hint_muted_instances.replace(self.muted_instances(me_id).await?);
+			}
+			Ok::<&HashSet<std::string::String>, diesel::result::Error>(
+				hint_muted_instances.as_ref().unwrap(),
+			)
+		};
+		let (following_set, muted_instances) =
+			futures_util::future::join(f_following, f_muted_instances).await;
+		let mut following = following_set?.iter().collect::<Vec<_>>();
+		let muted_instances = muted_instances?.iter().collect::<Vec<_>>();
+
+		if opt.with_cats {
+			//フォローユーザーでもcatではない事が明らかな場合は除外
+			following.retain(|f| hint.user_cache.get(*f).map(|u| u.is_cat).unwrap_or(true));
+		}
+
+		let mut con = self.db.get_read_only().await?;
+		let f_muting = async {
+			use crate::models::muting::muting::dsl::muting;
+			use crate::models::muting::muting::dsl::*;
+			let res: Result<Vec<crate::models::muting::MiMuting>, diesel::result::Error> = muting
+				.filter(muterId.eq(me_id))
+				.filter(muteeId.eq_any(&following))
+				.load(&mut con)
+				.await;
+			res
+		};
+		let muting = f_muting.await;
+		for m in muting?.into_iter() {
+			hint.is_muting_user.insert(m.mutee_id, true);
+		}
+		following.retain(|f| !*hint.is_muting_user.get(*f).unwrap_or(&false));
+		for user_id in &following {
+			hint.is_muting_user.insert((*user_id).clone(), false);
+		}
+		let me_id = me_id.to_string();
+		following.push(&me_id); //自身をTLに含める
+		let mut con = self.db.get_read_only().await?;
+		let mut raw_tl: Vec<MiNote> = {
+			use crate::models::note::note::dsl::note;
+			use crate::models::note::note::dsl::*;
+			use diesel::BoolExpressionMethods;
+			let mut q = note
+				.filter(
+					userId.eq_any(&following).or(userHost
+						.is_null()
+						.and(visibility.eq(NoteVisibility::Public))),
+				)
+				.filter(userHost.ne_all(&muted_instances))
+				.into_boxed();
+			if !opt.with_renotes {
+				q = q.filter(
+					renoteId.is_null().or(text
+						.is_not_null()
+						//.or(fileIds.ne(Vec::<String>::new()))
+						.or(cw.is_not_null())
+						.or(replyId.is_not_null())
+						.or(hasPoll.eq(true))),
+				);
+			}
+			if opt.with_files {
+				//TODO yojo-art 1.5.0時点ではfileIdsがVarChar[]型でdiesel側仕様でVarChar型が扱えない(Textとして扱われる)都合で型エラーを起こす
+				//q = q.filter(fileIds.ne(Vec::<String>::new()));
+			}
+			if opt.since_id.is_some() && opt.until_id.is_none() {
+				q = q.order(id.asc());
+			} else {
+				q = q.order(id.desc());
+			}
+			q = match (opt.since_id.as_ref(), opt.until_id.as_ref()) {
+				(Some(since_id), Some(until_id)) => q.filter(id.between(since_id, until_id)),
+				(Some(since_id), None) => q.filter(id.ge(since_id)),
+				(None, Some(until_id)) => q.filter(id.le(until_id)),
+				(None, None) => q,
+			};
+			q = q.limit(opt.limit.into());
+			q.select(MiNote::as_select()).load(&mut con).await?
+		};
+		let remove_last = if let Some(note) = raw_tl.last() {
+			Some(&note.id) == opt.since_id.as_ref() || Some(&note.id) == opt.until_id.as_ref()
+		} else {
+			false
+		};
+		if remove_last {
+			raw_tl.remove(raw_tl.len() - 1);
+		}
+		let remove_first = if let Some(note) = raw_tl.get(0) {
+			Some(&note.id) == opt.since_id.as_ref() || Some(&note.id) == opt.until_id.as_ref()
+		} else {
+			false
+		};
+		if remove_first {
+			raw_tl.remove(0);
+		}
+		Ok(raw_tl)
+	}
 	async fn raw_ltl(
 		&self,
 		me_id: Option<&String>,
@@ -371,6 +542,7 @@ impl TimelineService {
 			use diesel::BoolExpressionMethods;
 			let mut query = note
 				.filter(userHost.is_null())
+				.filter(visibility.eq(NoteVisibility::Public))
 				.filter(userId.ne_all(&exclude_users))
 				.filter(userHost.ne_all(&muted_instances))
 				.into_boxed();

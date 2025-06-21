@@ -21,7 +21,7 @@ diesel::table! {
 		end -> Nullable<Timestamp>,
 		title -> VarChar,
 		metadata -> Jsonb,
-		noteVisibility -> VarChar,
+		noteVisibility -> crate::models::note::NoteVisibilityType,
 		userId -> VarChar,
 		userHost -> Nullable<VarChar>,
 	}

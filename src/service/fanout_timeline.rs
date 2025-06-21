@@ -12,6 +12,7 @@ use super::meta::MetaService;
 pub enum FanoutTimelineName<'a> {
 	Home(bool, &'a String),
 	Local(bool, bool, Option<&'a String>),
+	Hybrid(bool, bool, &'a String),
 }
 impl FanoutTimelineName<'_> {
 	fn to_names(&self, host: impl AsRef<str>) -> Vec<String> {
@@ -48,6 +49,26 @@ impl FanoutTimelineName<'_> {
 					vec![format!("{}:list:localTimeline", host.as_ref())]
 				}
 			}
+			FanoutTimelineName::Hybrid(with_files, with_replies, user_id) => {
+				if *with_files {
+					vec![
+						format!("{}:list:homeTimelineWithFiles:{}", host.as_ref(), user_id),
+						format!("{}:list:localTimelineWithFiles", host.as_ref()),
+					]
+				} else if *with_replies {
+					vec![
+						format!("{}:list:homeTimeline:{}", host.as_ref(), user_id),
+						format!("{}:list:localTimeline", host.as_ref()),
+						format!("{}:list:localTimelineWithReplies", host.as_ref()),
+					]
+				} else {
+					vec![
+						format!("{}:list:homeTimeline:{}", host.as_ref(), user_id),
+						format!("{}:list:localTimeline", host.as_ref()),
+						format!("{}:list:localTimelineWithReplyTo{}", host.as_ref(), user_id),
+					]
+				}
+			}
 		}
 	}
 }
@@ -74,6 +95,40 @@ impl FanoutTimelineService {
 			redis_for_timelines,
 			timeline_service,
 		}
+	}
+	pub async fn get_stl(
+		&self,
+		user_id: &String,
+		hints: &mut TimelineHints,
+		opts: &TLOptions,
+	) -> Result<Vec<MiNote>, ServerError> {
+		let mut notes = self
+			.get_notes(
+				Some(user_id),
+				&&FanoutTimelineName::Hybrid(opts.with_files, opts.with_replies, user_id),
+				opts,
+				hints,
+			)
+			.await?;
+		let meta = self.meta_service.load(true).await.ok_or("db meta")?;
+		if meta.other.enable_fanout_timeline_db_fallback
+			&& (notes.is_empty() || (!opts.allow_partial && (notes.len() <= opts.limit.into())))
+		{
+			let opts = if let Some(last) = notes.last() {
+				let mut opts = opts.clone();
+				if opts.since_id.is_some() && opts.until_id.is_none() {
+					opts.since_id = Some(last.id.clone());
+				} else {
+					opts.until_id = Some(last.id.clone());
+				}
+				Cow::Owned(opts)
+			} else {
+				Cow::Borrowed(opts)
+			};
+			let add_notes = self.timeline_service.get_stl(user_id, hints, &opts).await?;
+			notes.extend_from_slice(&add_notes);
+		}
+		Ok(notes)
 	}
 	pub async fn get_ltl(
 		&self,
