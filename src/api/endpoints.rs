@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::Router;
 
-use crate::{Context, api::notes::hybrid_timeline};
+use crate::Context;
 
 use super::{default_route, drive, notes};
 
