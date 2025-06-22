@@ -57,7 +57,6 @@ pub struct ConfigFile {
 	thumbnail_quality: f32,
 	ffmpeg: Option<String>,
 	ffmpeg_base_url: Option<String>,
-	s3: S3Config,
 	session_ttl: u64,
 	part_max_size: u64,
 	backend: String,
@@ -110,16 +109,6 @@ impl From<MisskeyConfig> for ParsedMisskeyConfig {
 	}
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct S3Config {
-	endpoint: String,
-	bucket: String,
-	region: String,
-	access_key: String,
-	secret_key: String,
-	timeout: u64,
-	path_style: bool,
-}
-#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RedisConfig {
 	host: String,
 	port: u16,
@@ -151,7 +140,6 @@ impl DBConfig {
 }
 #[derive(Clone, Debug)]
 pub struct Context {
-	bucket: Box<Bucket>,
 	config: Arc<ConfigFile>,
 	pub misskey_config: Arc<ParsedMisskeyConfig>,
 	pub redis: MultiplexedConnection,
@@ -237,15 +225,6 @@ fn main() {
 			ffmpeg: Some("ffmpeg".to_owned()),
 			ffmpeg_base_url: Some("https://files.example.com/files/".to_owned()),
 			full_upload_limit: 10 * 1024 * 1024,
-			s3: S3Config {
-				endpoint: "http://localhost:9000".to_owned(),
-				region: "us-east-1".to_owned(),
-				access_key: "example-user".to_owned(),
-				secret_key: "example-password".to_owned(),
-				bucket: "files".to_owned(),
-				timeout: 5000,
-				path_style: true,
-			},
 			session_ttl: 300,
 			backend: "http://localhost:3000".to_owned(),
 		};
@@ -255,7 +234,7 @@ fn main() {
 			.write_all(default_config.as_bytes())
 			.unwrap();
 	}
-	let mut misskey_config: MisskeyConfig =
+	let misskey_config: MisskeyConfig =
 		serde_yaml::from_reader(std::fs::File::open(&".config/default.yml").unwrap()).unwrap();
 	let parsed_misskey_config: ParsedMisskeyConfig = misskey_config.clone().into();
 	let misskey_config = Arc::new(misskey_config);
@@ -264,27 +243,6 @@ fn main() {
 	let config: ConfigFile =
 		serde_json::from_reader(std::fs::File::open(&config_path).unwrap()).unwrap();
 	let config = Arc::new(config);
-	let bucket = s3::Bucket::new(
-		&config.s3.bucket,
-		s3::Region::Custom {
-			region: config.s3.region.to_owned(),
-			endpoint: config.s3.endpoint.to_owned(),
-		},
-		s3::creds::Credentials::new(
-			Some(&config.s3.access_key),
-			Some(&config.s3.secret_key),
-			None,
-			None,
-			None,
-		)
-		.unwrap(),
-	)
-	.unwrap();
-	let bucket = if config.s3.path_style {
-		bucket.with_path_style()
-	} else {
-		bucket
-	};
 	let redis = redis::Client::open(misskey_config.redis.to_url()).unwrap();
 	let redis_for_pubsub = misskey_config
 		.redis_for_pubsub
@@ -373,7 +331,6 @@ fn main() {
 		let client = reqwest::Client::new();
 
 		let arg_tup = Context {
-			bucket,
 			config,
 			redis,
 			client,
