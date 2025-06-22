@@ -86,6 +86,7 @@ jobs:
             {
               "cargo-home": "/var/cache/cargo",
               "app-target": "/app/target",
+              "dav1d-libs": "/dav1d_bin"
             }
           skip-extraction: ${{ steps.cache.outputs.cache-hit }}
 
