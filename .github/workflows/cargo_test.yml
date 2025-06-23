@@ -32,6 +32,6 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
 
     - name: Build test
-      run: cargo build --release --verbose ${{ matrix.platform }}
+      run: cargo build --release --verbose --target ${{ matrix.platform }}
     - name: Run tests
-      run: cargo test --verbose ${{ matrix.platform }}
+      run: cargo test --verbose --target ${{ matrix.platform }}
