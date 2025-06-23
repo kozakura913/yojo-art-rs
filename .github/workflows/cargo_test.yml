@@ -49,7 +49,7 @@ jobs:
           echo "CC=${MUSL_NAME}-gcc" >> $GITHUB_ENV
           echo "CXX=${MUSL_NAME}-g++" >> $GITHUB_ENV
           echo "AR=${MUSL_NAME}-ar" >> $GITHUB_ENV
-          echo "RUSTFLAGS='-C linker=${MUSL_NAME}-gcc'" >> $GITHUB_ENV
+          echo "RUSTFLAGS=-C linker=${MUSL_NAME}-gcc" >> $GITHUB_ENV
           echo "PKG_CONFIG_SYSROOT_DIR="/musl/${MUSL_NAME}-cross/" >> $GITHUB_ENV
           echo "BINDGEN_EXTRA_CLANG_ARGS="--sysroot /musl/${MUSL_NAME}-cross/${MUSL_NAME}" >> $GITHUB_ENV
           echo "/musl/${MUSL_NAME}-cross/bin" >> $GITHUB_PATH
