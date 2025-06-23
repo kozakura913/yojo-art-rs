@@ -9,6 +9,12 @@ jobs:
   test:
 
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - x86_64-unknown-linux-musl
+          - x86_64-unknown-linux-gnu
 
     steps:
     - name: Checkout
@@ -26,6 +32,6 @@ jobs:
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
 
     - name: Build test
-      run: cargo build --release --verbose
+      run: cargo build --release --verbose ${{ matrix.platform }}
     - name: Run tests
-      run: cargo test --verbose
+      run: cargo test --verbose ${{ matrix.platform }}
