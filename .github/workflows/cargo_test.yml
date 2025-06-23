@@ -54,7 +54,7 @@ jobs:
           echo "BINDGEN_EXTRA_CLANG_ARGS="--sysroot /musl/${MUSL_NAME}-cross/${MUSL_NAME}" >> $GITHUB_ENV
           echo "/musl/${MUSL_NAME}-cross/bin" >> $GITHUB_PATH
         else
-          echo "CC=clang' >> $GITHUB_ENV
+          echo "CC=clang" >> $GITHUB_ENV
         fi
     - name: add target
       run: rustup target add ${{ matrix.platform }}
