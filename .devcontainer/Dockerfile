@@ -12,7 +12,7 @@ ENV PATH="/musl/x86_64-linux-musl-cross/bin:${PATH}"
 ENV CC=x86_64-linux-musl-gcc
 ENV CXX=x86_64-linux-musl-g++
 ENV AR=x86_64-linux-musl-ar
-ENV RUSTFLAGS="-C target-cpu=x86-64-v3 -C linker=x86_64-linux-musl-gcc"
+ENV RUSTFLAGS="-C target-cpu=x86-64-v3 -C linker=x86_64-linux-musl-gcc -C link-arg=-fuse-ld=/usr/bin/mold"
 ENV PKG_CONFIG_SYSROOT_DIR="/musl/x86_64-linux-musl-cross/"
 ENV RUST_TARGET="x86_64-unknown-linux-musl"
 ENV BINDGEN_EXTRA_CLANG_ARGS="--sysroot /musl/x86_64-linux-musl-cross/x86_64-linux-musl"
