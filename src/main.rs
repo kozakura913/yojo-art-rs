@@ -36,12 +36,13 @@ impl ServerError {
 		sentry::capture_message(&text, sentry::Level::Error);
 		Self { status, text }
 	}
-	pub fn new_error(status: StatusCode, e: impl std::error::Error) -> Self {
-		sentry::integrations::anyhow::capture_anyhow(&e);
-		Self {
-			status,
-			text: format!("{:?}", e),
-		}
+	pub fn new_error<E>(status: StatusCode, e: E) -> Self
+	where
+		E: std::error::Error + Send + Sync + 'static,
+	{
+		let text = format!("{:?}", e);
+		sentry::integrations::anyhow::capture_anyhow(&anyhow::Error::new(e));
+		Self { status, text }
 	}
 }
 macro_rules! impl_convert_error_to_servererror {
