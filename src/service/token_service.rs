@@ -28,6 +28,8 @@ pub enum PermissionKind {
 	WriteDrive,
 	#[serde(rename = "read:drive")]
 	ReadDrive,
+	#[serde(rename = "read:account")]
+	ReadAccount,
 }
 impl TokenPermission {
 	pub fn is_allow(&self, key: PermissionKind) -> bool {
@@ -51,7 +53,7 @@ impl TokenPermission {
 			TokenPermission::None => Err("guest user".into()),
 		}
 	}
-	pub async fn as_user_id(&self) -> Option<&String> {
+	pub fn as_user_id(&self) -> Option<&String> {
 		match self {
 			TokenPermission::Token(mi_access_token) => Some(&mi_access_token.user_id),
 			TokenPermission::Master(mi_user) => Some(&mi_user.id),

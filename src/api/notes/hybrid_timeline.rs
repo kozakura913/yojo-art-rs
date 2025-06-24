@@ -34,7 +34,7 @@ pub async fn post(
 ) -> Result<axum::response::Response, ServerError> {
 	let permission = ctx.token_service.get_permission(&parms.i).await;
 	let meta = ctx.meta_service.load(true).await.ok_or("fetch meta")?;
-	let user_id = permission.as_user_id().await.ok_or("token")?;
+	let user_id = permission.as_user_id().ok_or("token")?;
 	let opts = TLOptions {
 		since_id: parms.since_id,
 		until_id: parms.until_id,

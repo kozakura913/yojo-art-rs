@@ -14,7 +14,7 @@ use crate::{
 
 #[derive(Debug, Deserialize)]
 pub struct RequestParams {
-	i: Token, //トークン必須
+	i: Option<Token>,
 	#[serde(rename = "allowPartial")]
 	allow_partial: Option<bool>,
 	limit: Option<u16>,
@@ -35,9 +35,17 @@ pub async fn post(
 	axum::extract::State(ctx): axum::extract::State<std::sync::Arc<Context>>,
 	axum::extract::Json(parms): axum::extract::Json<RequestParams>,
 ) -> Result<axum::response::Response, ServerError> {
-	let permission = ctx.token_service.get_permission(&parms.i).await;
+	let permission = if let Some(i)  = parms.i {
+		let permission = ctx.token_service.get_permission(&i).await;
+		if !permission.is_allow(crate::service::token_service::PermissionKind::ReadAccount) {
+			return Ok(StatusCode::FORBIDDEN.into_response());
+		}
+		permission
+	}else{
+		crate::service::token_service::TokenPermission::None
+	};
+	let user_id = permission.as_user_id();
 	let meta = ctx.meta_service.load(true).await.ok_or("fetch meta")?;
-	let user_id = permission.as_user_id().await;
 	let opts = TLOptions {
 		since_id: parms.since_id,
 		until_id: parms.until_id,
