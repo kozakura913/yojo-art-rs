@@ -33,8 +33,20 @@ pub async fn post(
 	axum::extract::Json(parms): axum::extract::Json<RequestParams>,
 ) -> Result<axum::response::Response, ServerError> {
 	let permission = ctx.token_service.get_permission(&parms.i).await;
-	let meta = ctx.meta_service.load(true).await.ok_or("fetch meta")?;
 	let user_id = permission.as_user_id().ok_or("token")?;
+	let policies = permission.get_policies(&ctx.role_service).await;
+	if !policies.ltl_available {
+		return Err(ServerError::new(
+			StatusCode::BAD_REQUEST,
+			serde_json::json!({
+				"message": "Hybrid timeline has been disabled.",
+				"code": "STL_DISABLED",
+				"id": "620763f4-f621-4533-ab33-0577a1a3c342",
+			})
+			.to_string(),
+		));
+	}
+	let meta = ctx.meta_service.load(true).await.ok_or("fetch meta")?;
 	let opts = TLOptions {
 		since_id: parms.since_id,
 		until_id: parms.until_id,

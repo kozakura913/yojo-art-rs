@@ -3,8 +3,7 @@ use std::borrow::Cow;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	DBConnection, DataBase, ServerError,
-	models::{access_token::MiAccessToken, user::MiUser},
+	models::{access_token::MiAccessToken, user::MiUser}, service::role::{RolePolicies, RoleService}, DBConnection, DataBase, ServerError
 };
 
 use super::id_service::IdService;
@@ -17,12 +16,14 @@ pub struct TokenService {
 	db: DataBase,
 	id_service: IdService,
 }
+#[derive(Default,Clone,Debug)]
 pub enum TokenPermission {
 	Token(MiAccessToken),
 	Master(MiUser),
+	#[default]
 	None,
 }
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug,Clone,Copy,PartialEq, Eq, Serialize, Deserialize)]
 pub enum PermissionKind {
 	#[serde(rename = "write:drive")]
 	WriteDrive,
@@ -68,6 +69,9 @@ impl TokenPermission {
 			TokenPermission::Master(mi_user) => Ok(mi_user),
 			TokenPermission::None => Err("guest user".into()),
 		}
+	}
+	pub async fn get_policies(&self, role_service: &RoleService)->RolePolicies{
+		role_service.get_user_policies(self.as_user_id().map(|x| x.as_str())).await
 	}
 }
 impl TokenService {

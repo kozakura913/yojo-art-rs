@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use axum::{http::StatusCode, response::IntoResponse};
-use redis::AsyncCommands;
 use serde::Deserialize;
 
 use crate::{
@@ -35,15 +34,22 @@ pub async fn post(
 	axum::extract::State(ctx): axum::extract::State<std::sync::Arc<Context>>,
 	axum::extract::Json(parms): axum::extract::Json<RequestParams>,
 ) -> Result<axum::response::Response, ServerError> {
-	let permission = if let Some(i)  = parms.i {
-		let permission = ctx.token_service.get_permission(&i).await;
-		if !permission.is_allow(crate::service::token_service::PermissionKind::ReadAccount) {
-			return Ok(StatusCode::FORBIDDEN.into_response());
-		}
-		permission
-	}else{
-		crate::service::token_service::TokenPermission::None
+	let permission = match &parms.i {
+		Some(i) => ctx.token_service.get_permission(i).await,
+		None => crate::service::token_service::TokenPermission::None,
 	};
+	let policies = permission.get_policies(&ctx.role_service).await;
+	if !policies.ltl_available {
+		return Err(ServerError::new(
+			StatusCode::BAD_REQUEST,
+			serde_json::json!({
+				"message": "Local timeline has been disabled.",
+				"code": "LTL_DISABLED",
+				"id": "45a6eb02-7695-4393-b023-dd3be9aaaefd",
+			})
+			.to_string(),
+		));
+	}
 	let user_id = permission.as_user_id();
 	let meta = ctx.meta_service.load(true).await.ok_or("fetch meta")?;
 	let opts = TLOptions {

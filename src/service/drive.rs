@@ -85,8 +85,7 @@ impl DriveService {
 			.role_service
 			.get_user_policies(user.as_ref().map(|user| user.id.as_str()))
 			.await
-			.always_mark_nsfw
-			.unwrap_or_default();
+			.always_mark_nsfw;
 		if user.is_none() {
 			//システムユーザーが作るファイルにはセンシティブ検出を適用しない
 			skip_nsfw_check = true;
@@ -120,12 +119,7 @@ impl DriveService {
 					.role_service
 					.get_user_policies(Some(user.id.as_str()))
 					.await;
-				if size
-					> policies
-						.file_size_limit
-						.unwrap()
-						.saturating_mul(1024 * 1024)
-				{
+				if size > policies.file_size_limit.saturating_mul(1024 * 1024) {
 					return Err(RegisterPreflightError::FileSizeLimitOver);
 				}
 			}
@@ -165,7 +159,7 @@ impl DriveService {
 					.role_service
 					.get_user_policies(Some(user.id.as_str()))
 					.await;
-				let drive_capacity = 1024 * 1024 * policies.drive_capacity_mb.unwrap_or_default();
+				let drive_capacity = 1024 * 1024 * policies.drive_capacity_mb;
 
 				// If usage limit exceeded
 				if drive_capacity < usage + size {
@@ -227,14 +221,10 @@ impl DriveService {
 				self.role_service
 					.get_user_policies(Some(user_id))
 					.await
-					.always_mark_nsfw
-					.unwrap(),
+					.always_mark_nsfw,
 				MiUserProfile::load_by_user(&mut con, user_id).await,
 			),
-			None => (
-				service::role::DEFAULT_POLICIES.always_mark_nsfw.unwrap(),
-				None,
-			),
+			None => (service::role::DEFAULT_POLICIES.always_mark_nsfw, None),
 		};
 
 		let folder = fetch_folder(&mut con, folder_id, user_id).await;

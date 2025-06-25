@@ -165,7 +165,7 @@ impl RoleService {
 					.unwrap();
 			}
 		};
-		let mut policies: HashMap<String, Policy> = base_policies.clone();
+		let mut policies = base_policies;
 		let base_policies = policies.clone();
 		let roles = self.get_user_roles(user_id).await;
 		if let Some(roles) = roles.as_ref() {
@@ -192,102 +192,102 @@ impl RoleService {
 }
 
 pub const DEFAULT_POLICIES: RolePolicies = RolePolicies {
-	gtl_available: Some(true),
-	ltl_available: Some(true),
-	can_public_note: Some(true),
-	can_edit_note: Some(true),
-	mention_limit: Some(20),
-	can_invite: Some(false),
-	invite_limit: Some(0),
-	invite_limit_cycle: Some(60 * 24 * 7),
-	invite_expiration_time: Some(0),
-	can_manage_custom_emojis: Some(false),
-	can_manage_avatar_decorations: Some(false),
-	can_search_notes: Some(false),
-	can_advanced_search_notes: Some(false),
-	can_use_translator: Some(true),
-	can_hide_ads: Some(false),
-	drive_capacity_mb: Some(100),
-	always_mark_nsfw: Some(false),
-	can_update_bio_media: Some(true),
-	pin_limit: Some(5),
-	antenna_limit: Some(5),
-	word_mute_limit: Some(200),
-	webhook_limit: Some(3),
-	clip_limit: Some(10),
-	note_each_clips_limit: Some(200),
-	user_list_limit: Some(10),
-	user_each_user_lists_limit: Some(50),
-	rate_limit_factor: Some(1.0),
-	avatar_decoration_limit: Some(1),
-	file_size_limit: Some(50),
-	mutual_link_section_limit: Some(1),
-	mutual_link_limit: Some(15),
+	gtl_available: true,
+	ltl_available: true,
+	can_public_note: true,
+	can_edit_note: true,
+	mention_limit: 20,
+	can_invite: false,
+	invite_limit: 0,
+	invite_limit_cycle: 60 * 24 * 7,
+	invite_expiration_time: 0,
+	can_manage_custom_emojis: false,
+	can_manage_avatar_decorations: false,
+	can_search_notes: false,
+	can_advanced_search_notes: false,
+	can_use_translator: true,
+	can_hide_ads: false,
+	drive_capacity_mb: 100,
+	always_mark_nsfw: false,
+	can_update_bio_media: true,
+	pin_limit: 5,
+	antenna_limit: 5,
+	word_mute_limit: 200,
+	webhook_limit: 3,
+	clip_limit: 10,
+	note_each_clips_limit: 200,
+	user_list_limit: 10,
+	user_each_user_lists_limit: 50,
+	rate_limit_factor: 1.0,
+	avatar_decoration_limit: 1,
+	file_size_limit: 50,
+	mutual_link_section_limit: 1,
+	mutual_link_limit: 15,
 };
 #[derive(Clone, Serialize, Deserialize, Default, Debug)]
 pub struct RolePolicies {
 	#[serde(rename = "gtlAvailable")]
-	pub gtl_available: Option<bool>,
+	pub gtl_available: bool,
 	#[serde(rename = "ltlAvailable")]
-	pub ltl_available: Option<bool>,
+	pub ltl_available: bool,
 	#[serde(rename = "canPublicNote")]
-	pub can_public_note: Option<bool>,
+	pub can_public_note: bool,
 	#[serde(rename = "canEditNote")]
-	pub can_edit_note: Option<bool>,
+	pub can_edit_note: bool,
 	#[serde(rename = "mentionLimit")]
-	pub mention_limit: Option<i32>,
+	pub mention_limit: i32,
 	#[serde(rename = "canInvite")]
-	pub can_invite: Option<bool>,
+	pub can_invite: bool,
 	#[serde(rename = "inviteLimit")]
-	pub invite_limit: Option<i32>,
+	pub invite_limit: i32,
 	#[serde(rename = "inviteLimitCycle")]
-	pub invite_limit_cycle: Option<i64>,
+	pub invite_limit_cycle: i64,
 	#[serde(rename = "inviteExpirationTime")]
-	pub invite_expiration_time: Option<i64>,
+	pub invite_expiration_time: i64,
 	#[serde(rename = "canManageCustomEmojis")]
-	pub can_manage_custom_emojis: Option<bool>,
+	pub can_manage_custom_emojis: bool,
 	#[serde(rename = "canManageAvatarDecorations")]
-	pub can_manage_avatar_decorations: Option<bool>,
+	pub can_manage_avatar_decorations: bool,
 	#[serde(rename = "canSearchNotes")]
-	pub can_search_notes: Option<bool>,
+	pub can_search_notes: bool,
 	#[serde(rename = "canAdvancedSearchNotes")]
-	pub can_advanced_search_notes: Option<bool>,
+	pub can_advanced_search_notes: bool,
 	#[serde(rename = "canUseTranslator")]
-	pub can_use_translator: Option<bool>,
+	pub can_use_translator: bool,
 	#[serde(rename = "canHideAds")]
-	pub can_hide_ads: Option<bool>,
+	pub can_hide_ads: bool,
 	#[serde(rename = "driveCapacityMb")]
-	pub drive_capacity_mb: Option<i64>,
+	pub drive_capacity_mb: i64,
 	#[serde(rename = "alwaysMarkNsfw")]
-	pub always_mark_nsfw: Option<bool>,
+	pub always_mark_nsfw: bool,
 	#[serde(rename = "canUpdateBioMedia")]
-	pub can_update_bio_media: Option<bool>,
+	pub can_update_bio_media: bool,
 	#[serde(rename = "pinLimit")]
-	pub pin_limit: Option<i32>,
+	pub pin_limit: i32,
 	#[serde(rename = "antennaLimit")]
-	pub antenna_limit: Option<i32>,
+	pub antenna_limit: i32,
 	#[serde(rename = "wordMuteLimit")]
-	pub word_mute_limit: Option<i64>,
+	pub word_mute_limit: i64,
 	#[serde(rename = "webhookLimit")]
-	pub webhook_limit: Option<i32>,
+	pub webhook_limit: i32,
 	#[serde(rename = "clipLimit")]
-	pub clip_limit: Option<i64>,
+	pub clip_limit: i64,
 	#[serde(rename = "noteEachClipsLimit")]
-	pub note_each_clips_limit: Option<i64>,
+	pub note_each_clips_limit: i64,
 	#[serde(rename = "userListLimit")]
-	pub user_list_limit: Option<i64>,
+	pub user_list_limit: i64,
 	#[serde(rename = "userEachUserListsLimit")]
-	pub user_each_user_lists_limit: Option<i64>,
+	pub user_each_user_lists_limit: i64,
 	#[serde(rename = "rateLimitFactor")]
-	pub rate_limit_factor: Option<f64>,
+	pub rate_limit_factor: f64,
 	#[serde(rename = "avatarDecorationLimit")]
-	pub avatar_decoration_limit: Option<i32>,
+	pub avatar_decoration_limit: i32,
 	#[serde(rename = "fileSizeLimit")]
-	pub file_size_limit: Option<i64>,
+	pub file_size_limit: i64,
 	#[serde(rename = "mutualLinkSectionLimit")]
-	pub mutual_link_section_limit: Option<i32>,
+	pub mutual_link_section_limit: i32,
 	#[serde(rename = "mutualLinkLimit")]
-	pub mutual_link_limit: Option<i32>,
+	pub mutual_link_limit: i32,
 }
 impl Into<HashMap<String, Policy>> for RolePolicies {
 	fn into(self) -> HashMap<String, Policy> {
