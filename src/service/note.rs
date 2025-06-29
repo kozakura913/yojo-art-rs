@@ -7,7 +7,7 @@ use crate::{
 	DBConnection, DataBase, MisskeyConfig, ServerError,
 	models::{
 		self,
-		common::SearchableTypes,
+		common::NoteSearchableBy,
 		drive_file::{FileProperties, MiDriveFile},
 		drive_folder::MiDriveFolder,
 		event::{EventMetadata, MiEvent},
@@ -486,7 +486,7 @@ pub struct PackedNote {
 	cw: Option<String>,
 	visibility: NoteVisibility,
 	#[serde(rename = "searchableBy")]
-	searchable_by: Option<SearchableTypes>,
+	searchable_by: Option<NoteSearchableBy>,
 	#[serde(rename = "localOnly")]
 	local_only: bool,
 	#[serde(rename = "reactionAcceptance")]

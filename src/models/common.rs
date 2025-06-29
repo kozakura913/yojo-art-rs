@@ -1,15 +1,7 @@
-use chrono::NaiveDateTime;
-use diesel::{
-	FromSqlRow, Selectable,
-	deserialize::FromSql,
-	expression::AsExpression,
-	serialize::{IsNull, ToSql},
-	sql_types::{Jsonb, Nullable, VarChar},
-};
+use diesel::{FromSqlRow, deserialize::FromSql, expression::AsExpression, serialize::ToSql};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use strum_macros::{Display, EnumString};
-use yojo_art_utils::PgString;
+use yojo_art_utils::PgEnum;
 
 #[derive(
 	Copy,
@@ -23,20 +15,68 @@ use yojo_art_utils::PgString;
 	AsExpression,
 	Serialize,
 	Deserialize,
-	PgString,
+	PgEnum,
 )]
-#[diesel(sql_type = VarChar)]
-pub enum SearchableTypes {
+#[diesel(sql_type = NoteSearchableType)]
+#[pg_type(sql_type = "NoteSearchableType")]
+pub enum NoteSearchableBy {
 	#[strum(serialize = "public")]
 	#[serde(rename = "public")]
 	/** だれでも */
 	Public,
-	#[strum(serialize = "followers")]
-	#[serde(rename = "followers")]
+	#[strum(serialize = "followersAndReacted")]
+	#[serde(rename = "followersAndReacted")]
 	/** フォロワーのみ */
-	Followers,
-	#[strum(serialize = "reacted")]
-	#[serde(rename = "reacted")]
+	FollowersAndReacted,
+	#[strum(serialize = "reactedOnly")]
+	#[serde(rename = "reactedOnly")]
 	/** 返信かリアクションしたユーザーのみ */
-	Reacted,
+	ReactedOnly,
+	#[strum(serialize = "private")]
+	#[serde(rename = "private")]
+	/** 投稿者のみ */
+	Private,
 }
+
+#[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
+#[diesel(postgres_type(name = "note_searchableby_enum"))]
+pub struct NoteSearchableType;
+
+#[derive(
+	Copy,
+	Clone,
+	EnumString,
+	PartialEq,
+	Eq,
+	Display,
+	Debug,
+	FromSqlRow,
+	AsExpression,
+	Serialize,
+	Deserialize,
+	PgEnum,
+)]
+#[diesel(sql_type = UserSearchableType)]
+#[pg_type(sql_type = "UserSearchableType")]
+pub enum UserSearchableBy {
+	#[strum(serialize = "public")]
+	#[serde(rename = "public")]
+	/** だれでも */
+	Public,
+	#[strum(serialize = "followersAndReacted")]
+	#[serde(rename = "followersAndReacted")]
+	/** フォロワーのみ */
+	FollowersAndReacted,
+	#[strum(serialize = "reactedOnly")]
+	#[serde(rename = "reactedOnly")]
+	/** 返信かリアクションしたユーザーのみ */
+	ReactedOnly,
+	#[strum(serialize = "private")]
+	#[serde(rename = "private")]
+	/** 投稿者のみ */
+	Private,
+}
+
+#[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
+#[diesel(postgres_type(name = "user_searchableby_enum"))]
+pub struct UserSearchableType;

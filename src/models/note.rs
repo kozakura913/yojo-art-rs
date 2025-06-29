@@ -12,8 +12,7 @@ use std::collections::{HashMap, HashSet};
 use strum_macros::{Display, EnumString};
 use yojo_art_utils::{PgEnum, PgJson, PgString};
 
-use super::{common::SearchableTypes, following::MiFollowing};
-use crate::DBConnection;
+use crate::{DBConnection, models::common::NoteSearchableBy};
 use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
 use diesel_async::RunQueryDsl;
 
@@ -42,7 +41,7 @@ diesel::table! {
 		clippedCount -> SmallInt,
 		reactions -> Jsonb,
 		visibility -> crate::models::note::NoteVisibilityType,
-		searchableBy -> Nullable<VarChar>,
+		searchableBy -> Nullable<crate::models::common::NoteSearchableType>,
 		uri -> Nullable<VarChar>,
 		url -> Nullable<VarChar>,
 		fileIds -> Array<VarChar>,
@@ -101,7 +100,7 @@ pub struct MiNote {
 	pub visibility: NoteVisibility,
 	#[diesel(column_name = "searchableBy")]
 	/** NoneでユーザーのsearchableByを見る */
-	pub searchable_by: Option<SearchableTypes>,
+	pub searchable_by: Option<NoteSearchableBy>,
 	/** The URI of a note. it will be null when the note is local. */
 	pub uri: Option<String>,
 	/** The human readable url of a note. it will be null when the note is local. */

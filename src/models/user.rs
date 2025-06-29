@@ -11,9 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use strum_macros::{Display, EnumString};
 
-use crate::DBConnection;
-
-use super::common::SearchableTypes;
+use crate::{DBConnection, models::common::UserSearchableBy};
 
 //TODO テーブル分割したい(32制限に収めたい)
 diesel::table! {
@@ -46,7 +44,7 @@ diesel::table! {
 		isRoot -> Bool,
 		isExplorable -> Bool,
 		isIndexable -> Bool,
-		searchableBy -> Nullable<VarChar>,
+		searchableBy -> Nullable<crate::models::common::UserSearchableType>,
 		requireSigninToViewContents -> Bool,
 		makeNotesFollowersOnlyBefore -> Nullable<Int4>,
 		makeNotesHiddenBefore -> Nullable<Int4>,
@@ -119,7 +117,7 @@ pub struct MiUser {
 	pub is_indexable: bool,
 	#[diesel(column_name = "searchableBy")]
 	/** NoneでisIndexableを見る */
-	pub searchable_by: Option<SearchableTypes>,
+	pub searchable_by: Option<UserSearchableBy>,
 	#[diesel(column_name = "makeNotesFollowersOnlyBefore")]
 	/** in sec, マイナスで相対時間*/
 	pub make_notes_followers_only_before: Option<i32>,
