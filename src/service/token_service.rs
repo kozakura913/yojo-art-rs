@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	DBConnection, DataBase, ServerError,
 	models::{access_token::MiAccessToken, user::MiUser},
+	service::role::{RolePolicies, RoleService},
 };
 
 use super::id_service::IdService;
@@ -17,26 +18,37 @@ pub struct TokenService {
 	db: DataBase,
 	id_service: IdService,
 }
+#[derive(Default, Clone, Debug)]
 pub enum TokenPermission {
 	Token(MiAccessToken),
-	Master(MiUser),
+	User(MiUser),
+	#[default]
 	None,
 }
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PermissionKind {
 	#[serde(rename = "write:drive")]
 	WriteDrive,
 	#[serde(rename = "read:drive")]
 	ReadDrive,
+	#[serde(rename = "read:account")]
+	ReadAccount,
 }
 impl TokenPermission {
+	pub fn type_str(&self) -> &'static str {
+		match self {
+			TokenPermission::Token(_) => "Token",
+			TokenPermission::User(_) => "User",
+			TokenPermission::None => "Default",
+		}
+	}
 	pub fn is_allow(&self, key: PermissionKind) -> bool {
 		let s = serde_json::to_string(&key).unwrap();
 		match self {
 			TokenPermission::Token(mi_access_token) => {
 				mi_access_token.permission.binary_search(&s).is_ok()
 			}
-			TokenPermission::Master(_mi_user) => true,
+			TokenPermission::User(_mi_user) => true,
 			TokenPermission::None => false,
 		}
 	}
@@ -47,14 +59,14 @@ impl TokenPermission {
 					.await
 					.map(|t| Cow::Owned(t))?)
 			}
-			TokenPermission::Master(mi_user) => Ok(Cow::Borrowed(mi_user)),
+			TokenPermission::User(mi_user) => Ok(Cow::Borrowed(mi_user)),
 			TokenPermission::None => Err("guest user".into()),
 		}
 	}
-	pub async fn as_user_id(&self) -> Option<&String> {
+	pub fn as_user_id(&self) -> Option<&String> {
 		match self {
 			TokenPermission::Token(mi_access_token) => Some(&mi_access_token.user_id),
-			TokenPermission::Master(mi_user) => Some(&mi_user.id),
+			TokenPermission::User(mi_user) => Some(&mi_user.id),
 			TokenPermission::None => None,
 		}
 	}
@@ -63,9 +75,14 @@ impl TokenPermission {
 			TokenPermission::Token(mi_access_token) => {
 				Ok(MiUser::load_by_id(db, &mi_access_token.user_id).await?)
 			}
-			TokenPermission::Master(mi_user) => Ok(mi_user),
+			TokenPermission::User(mi_user) => Ok(mi_user),
 			TokenPermission::None => Err("guest user".into()),
 		}
+	}
+	pub async fn get_policies(&self, role_service: &RoleService) -> RolePolicies {
+		role_service
+			.get_user_policies(self.as_user_id().map(|x| x.as_str()))
+			.await
 	}
 }
 impl TokenService {
@@ -87,8 +104,11 @@ impl TokenService {
 		}
 		let user = MiUser::load_by_token(&mut con, token_id).await;
 		match user {
-			Ok(user) => TokenPermission::Master(user),
-			_ => TokenPermission::None,
+			Ok(user) => TokenPermission::User(user),
+			Err(e) => {
+				eprintln!("{}:{} {:?}", file!(), line!(), e);
+				return TokenPermission::None;
+			}
 		}
 	}
 }

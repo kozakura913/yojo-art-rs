@@ -39,6 +39,7 @@ impl MetaService {
 				return Some(v);
 			}
 		}
+		let mut lock = self.cache.write().await;
 		let mut con = self
 			.db
 			.get_read_only()
@@ -81,7 +82,7 @@ impl MetaService {
 			other,
 		};
 		let v = Some(Arc::new(res));
-		*self.cache.write().await = v.clone();
+		*lock = v.clone();
 		v
 	}
 }

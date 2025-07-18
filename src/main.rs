@@ -40,7 +40,7 @@ impl ServerError {
 	where
 		E: std::error::Error + Send + Sync + 'static,
 	{
-		let text = format!("{:?}", e);
+		let text = format!("{} {:?}",std::any::type_name::<T>(), e);
 		sentry::integrations::anyhow::capture_anyhow(&anyhow::Error::new(e));
 		Self { status, text }
 	}

@@ -475,7 +475,6 @@ impl UserService {
 			user.avatar_url.unwrap()
 		};
 		//println!("avatar_decorations={:?}", user.avatar_decorations);
-		let mut con = self.db.get_read_only().await?;
 		let instance = match user.host.as_ref() {
 			Some(host) => Some(self.instance_service.fetch_connection(host).await?),
 			None => None,
@@ -492,23 +491,33 @@ impl UserService {
 			use crate::models::avatar_decoration::avatar_decoration::dsl::*;
 			use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
 			use diesel_async::RunQueryDsl;
-			let res: Option<Vec<crate::models::avatar_decoration::MiAvatarDecoration>> =
-				avatar_decoration
-					.filter(id.eq_any(&avatar_decoration_ids))
-					.select(crate::models::avatar_decoration::MiAvatarDecoration::as_select())
-					.load(&mut con)
-					.await
-					.map_err(|e| {
-						eprintln!("{}:{} {:?}", file!(), line!(), e);
-					})
-					.ok();
-			res.map(|ad| {
-				let mut map = HashMap::new();
-				for ad in ad.into_iter() {
-					map.insert(ad.id, ad.url);
-				}
-				map
-			})
+			if let Some(mut con) = self
+				.db
+				.get_read_only()
+				.await
+				.map_err(|e| eprintln!("{}:{} {}", file!(), line!(), e))
+				.ok()
+			{
+				let res: Option<Vec<crate::models::avatar_decoration::MiAvatarDecoration>> =
+					avatar_decoration
+						.filter(id.eq_any(&avatar_decoration_ids))
+						.select(crate::models::avatar_decoration::MiAvatarDecoration::as_select())
+						.load(&mut con)
+						.await
+						.map_err(|e| {
+							eprintln!("{}:{} {:?}", file!(), line!(), e);
+						})
+						.ok();
+				res.map(|ad| {
+					let mut map = HashMap::new();
+					for ad in ad.into_iter() {
+						map.insert(ad.id, ad.url);
+					}
+					map
+				})
+			} else {
+				None
+			}
 		};
 		//DBクエリ
 		let avatar_decoration_urls = avatar_decoration_urls.await;

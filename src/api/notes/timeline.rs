@@ -1,7 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use axum::{http::StatusCode, response::IntoResponse};
 use serde::Deserialize;
+use tokio::sync::RwLock;
 
 use crate::{
 	Context, ServerError,
@@ -34,7 +35,7 @@ pub async fn post(
 ) -> Result<axum::response::Response, ServerError> {
 	let permission = ctx.token_service.get_permission(&parms.i).await;
 	let meta = ctx.meta_service.load(true).await.ok_or("fetch meta")?;
-	let user_id = permission.as_user_id().await.ok_or("token")?;
+	let user_id = permission.as_user_id().ok_or("token")?;
 	let opts = TLOptions {
 		since_id: parms.since_id,
 		until_id: parms.until_id,
@@ -45,7 +46,6 @@ pub async fn post(
 		limit: parms.limit.unwrap_or(10),
 		with_replies: false,
 	};
-	let mut user_cache = HashMap::new();
 	let mut hints = TimelineHints::default();
 	let notes = if meta.other.enable_fanout_timeline {
 		ctx.fanout_timeline_service
@@ -56,21 +56,10 @@ pub async fn post(
 			.get_htl(user_id, &mut hints, &opts)
 			.await
 	}?;
-	let mut note_cache = HashMap::new();
-	let mut packed_notes = vec![];
-	for note in notes {
-		let packed_note = ctx
-			.note_service
-			.pack_detail(
-				note,
-				Some(user_id),
-				&mut user_cache,
-				&mut note_cache,
-				&mut hints.note_relation_note,
-			)
-			.await?;
-		packed_notes.push(packed_note);
-	}
+	let packed_notes = ctx
+		.note_service
+		.pack_detail_many(notes.into_iter(), Some(user_id), &hints.note_relation_note)
+		.await;
 	let mut header = axum::http::header::HeaderMap::new();
 	header.insert("Content-Type", "application/json".parse().unwrap());
 	Ok((

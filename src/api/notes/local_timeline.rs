@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use axum::{http::StatusCode, response::IntoResponse};
-use redis::AsyncCommands;
 use serde::Deserialize;
 
 use crate::{
@@ -14,7 +13,7 @@ use crate::{
 
 #[derive(Debug, Deserialize)]
 pub struct RequestParams {
-	i: Token, //トークン必須
+	i: Option<Token>,
 	#[serde(rename = "allowPartial")]
 	allow_partial: Option<bool>,
 	limit: Option<u16>,
@@ -35,9 +34,24 @@ pub async fn post(
 	axum::extract::State(ctx): axum::extract::State<std::sync::Arc<Context>>,
 	axum::extract::Json(parms): axum::extract::Json<RequestParams>,
 ) -> Result<axum::response::Response, ServerError> {
-	let permission = ctx.token_service.get_permission(&parms.i).await;
+	let permission = match &parms.i {
+		Some(i) => ctx.token_service.get_permission(i).await,
+		None => crate::service::token_service::TokenPermission::None,
+	};
+	let policies = permission.get_policies(&ctx.role_service).await;
+	if !policies.ltl_available {
+		return Err(ServerError::new(
+			StatusCode::BAD_REQUEST,
+			serde_json::json!({
+				"message": "Local timeline has been disabled.",
+				"code": "LTL_DISABLED",
+				"id": "45a6eb02-7695-4393-b023-dd3be9aaaefd",
+			})
+			.to_string(),
+		));
+	}
+	let user_id = permission.as_user_id();
 	let meta = ctx.meta_service.load(true).await.ok_or("fetch meta")?;
-	let user_id = permission.as_user_id().await;
 	let opts = TLOptions {
 		since_id: parms.since_id,
 		until_id: parms.until_id,
@@ -48,7 +62,6 @@ pub async fn post(
 		limit: parms.limit.unwrap_or(10),
 		with_replies: parms.with_replies.unwrap_or(false),
 	};
-	let mut user_cache = HashMap::new();
 	let mut hints = TimelineHints::default();
 	let notes = if meta.other.enable_fanout_timeline {
 		ctx.fanout_timeline_service
@@ -59,21 +72,10 @@ pub async fn post(
 			.get_ltl(user_id, &mut hints, &opts)
 			.await
 	}?;
-	let mut note_cache = HashMap::new();
-	let mut packed_notes = vec![];
-	for note in notes {
-		let packed_note = ctx
-			.note_service
-			.pack_detail(
-				note,
-				user_id,
-				&mut user_cache,
-				&mut note_cache,
-				&mut hints.note_relation_note,
-			)
-			.await?;
-		packed_notes.push(packed_note);
-	}
+	let packed_notes = ctx
+		.note_service
+		.pack_detail_many(notes.into_iter(), user_id, &hints.note_relation_note)
+		.await;
 	let mut header = axum::http::header::HeaderMap::new();
 	header.insert("Content-Type", "application/json".parse().unwrap());
 	Ok((

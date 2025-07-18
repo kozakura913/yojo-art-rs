@@ -193,30 +193,34 @@ impl TimelineService {
 		use diesel::{ExpressionMethods, QueryDsl};
 		use diesel_async::RunQueryDsl;
 		let mut note_relation_user_ids = HashSet::new();
+		let mut note_relation_note_ids = HashSet::new();
 		for note in notes.iter() {
 			if let Some(reply_id) = note.reply_id.as_ref() {
 				if !hint.note_relation_note.contains_key(reply_id) {
-					let reply =
-						MiNote::load_by_id(&mut self.db.get_read_only().await?, reply_id).await?;
-					//TLから除外するユーザーであればユーザー情報を取得する必要はない
-					if !exclude_users.contains(&reply.user_id) {
-						note_relation_user_ids.insert(reply.user_id.clone());
-					}
-					hint.note_relation_note.insert(reply_id.clone(), reply);
+					note_relation_note_ids.insert(reply_id);
 				}
 			}
 			if let Some(renote_id) = note.renote_id.as_ref() {
 				if !hint.note_relation_note.contains_key(renote_id) {
-					let renote =
-						MiNote::load_by_id(&mut self.db.get_read_only().await?, renote_id).await?;
-					if !exclude_users.contains(&renote.user_id) {
-						note_relation_user_ids.insert(renote.user_id.clone());
-					}
-					hint.note_relation_note.insert(renote_id.clone(), renote);
+					note_relation_note_ids.insert(renote_id);
 				}
 			}
 			if !exclude_users.contains(&note.user_id) {
 				note_relation_user_ids.insert(note.user_id.clone());
+			}
+		}
+		{
+			let note_relation_note = MiNote::load_by_ids(
+				&mut self.db.get_read_only().await?,
+				note_relation_note_ids.into_iter(),
+			)
+			.await?;
+			for note in note_relation_note {
+				//TLから除外するユーザーであればユーザー情報を取得する必要はない
+				if !exclude_users.contains(&note.user_id) {
+					note_relation_user_ids.insert(note.user_id.clone());
+				}
+				hint.note_relation_note.insert(note.id.clone(), note);
 			}
 		}
 		if let Some(me_id) = me_id {

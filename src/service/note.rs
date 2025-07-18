@@ -1,13 +1,15 @@
 use std::{collections::HashMap, sync::Arc};
 
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
+use memory_cache::MemoryCache;
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 
 use crate::{
 	DBConnection, DataBase, MisskeyConfig, ServerError,
 	models::{
 		self,
-		common::SearchableTypes,
+		common::NoteSearchableBy,
 		drive_file::{FileProperties, MiDriveFile},
 		drive_folder::MiDriveFolder,
 		event::{EventMetadata, MiEvent},
@@ -67,76 +69,123 @@ impl NoteService {
 			event_service,
 		}
 	}
+	pub async fn pack_detail_many(
+		&self,
+		notes: impl Iterator<Item = MiNote>,
+		me_id: Option<&String>,
+		note_hint: &HashMap<String, MiNote>,
+	) -> Vec<PackedNote> {
+		let user_cache = Arc::new(RwLock::new(HashMap::new()));
+		let note_cache = Arc::new(RwLock::new(HashMap::new()));
+		let mut f_packed_notes = vec![];
+		for note in notes {
+			let packed_note = self.pack_detail(
+				note,
+				me_id,
+				user_cache.clone(),
+				note_cache.clone(),
+				&note_hint,
+			);
+			f_packed_notes.push(packed_note);
+		}
+		let mut packed_notes = Vec::with_capacity(f_packed_notes.len());
+		for packed in futures_util::future::join_all(f_packed_notes)
+			.await
+			.into_iter()
+		{
+			match packed {
+				Ok(note) => packed_notes.push(note),
+				Err(e) => {
+					eprintln!("{}:{} {}", file!(), line!(), e.text);
+				}
+			}
+		}
+		packed_notes
+	}
 	pub async fn pack_detail(
 		&self,
 		note: MiNote,
 		me_id: Option<&String>,
-		user_cache: &mut HashMap<String, MiUser>,
-		note_cache: &mut HashMap<String, PackedNote>,
+		user_cache: Arc<RwLock<HashMap<String, MiUser>>>,
+		note_cache: Arc<RwLock<HashMap<String, PackedNote>>>,
 		note_hint: &HashMap<String, MiNote>,
 	) -> Result<PackedNote, ServerError> {
-		let reply = match note.reply_id.as_ref() {
-			Some(reply_id) => {
-				let reply = match note_cache.get(reply_id) {
-					Some(note) => note.clone(),
-					None => {
-						let note = match note_hint.get(reply_id) {
-							Some(note) => note.clone(),
-							None => {
-								MiNote::load_by_id(&mut self.db.get_read_only().await?, reply_id)
-									.await?
-							}
-						};
-						let packed = self.pack(note, me_id, user_cache).await?;
-						note_cache.insert(packed.id.clone(), packed.clone());
-						packed
-					}
-				};
-				Some(Box::new(reply))
+		let reply_id = note.reply_id.clone();
+		let user_cache0 = user_cache.clone();
+		let reply = async {
+			match reply_id {
+				Some(reply_id) => {
+					let note = self
+						.cache_or_pack(&reply_id, me_id, user_cache0, note_cache.clone(), note_hint)
+						.await;
+					note.map(|note| Some(Box::new(note)))
+				}
+				None => Ok(None),
 			}
-			None => None,
 		};
-		let renote = match note.renote_id.as_ref() {
-			Some(renote_id) => {
-				let renote = match note_cache.get(renote_id) {
-					Some(note) => note.clone(),
-					None => {
-						let note = match note_hint.get(renote_id) {
-							Some(note) => note.clone(),
-							None => {
-								MiNote::load_by_id(&mut self.db.get_read_only().await?, renote_id)
-									.await?
-							}
-						};
-						let packed = self.pack(note, me_id, user_cache).await?;
-						note_cache.insert(packed.id.clone(), packed.clone());
-						packed
-					}
-				};
-				Some(Box::new(renote))
+		let renote_id = note.renote_id.clone();
+		let user_cache0 = user_cache.clone();
+		let renote = async {
+			match renote_id {
+				Some(renote_id) => {
+					let note = self
+						.cache_or_pack(
+							&renote_id,
+							me_id,
+							user_cache0,
+							note_cache.clone(),
+							note_hint,
+						)
+						.await;
+					note.map(|note| Some(Box::new(note)))
+				}
+				None => Ok(None),
 			}
-			None => None,
 		};
-		let mut packed_note = self.pack(note, me_id, user_cache).await?;
-		packed_note.renote = renote;
-		packed_note.reply = reply;
+		let (packed_note, renote, reply) =
+			futures_util::future::join3(self.pack(note, me_id, user_cache), renote, reply).await;
+		let mut packed_note = packed_note?;
+		packed_note.renote = renote?;
+		packed_note.reply = reply?;
 		Ok(packed_note)
+	}
+	async fn cache_or_pack(
+		&self,
+		note_id: &String,
+		me_id: Option<&String>,
+		user_cache: Arc<RwLock<HashMap<String, MiUser>>>,
+		note_cache: Arc<RwLock<HashMap<String, PackedNote>>>,
+		note_hint: &HashMap<String, MiNote>,
+	) -> Result<PackedNote, ServerError> {
+		{
+			let read_lock = note_cache.read().await;
+			if let Some(note) = read_lock.get(note_id) {
+				return Ok(note.clone());
+			}
+		}
+		let mut write_lock = note_cache.write().await;
+		let note = match note_hint.get(note_id) {
+			Some(note) => note.clone(),
+			None => MiNote::load_by_id(&mut self.db.get_read_only().await?, note_id).await?,
+		};
+		let packed = self.pack(note, me_id, user_cache).await?;
+		write_lock.insert(packed.id.clone(), packed.clone());
+		Ok(packed)
 	}
 	/* renoteとreplyを処理しない */
 	pub async fn pack(
 		&self,
 		note: MiNote,
 		me_id: Option<&String>,
-		user_cache: &mut HashMap<String, MiUser>,
+		user_cache: Arc<RwLock<HashMap<String, MiUser>>>,
 	) -> Result<PackedNote, ServerError> {
-		let user = match user_cache.get(&note.user_id) {
-			Some(u) => u,
-			None => {
-				let u =
-					MiUser::load_by_id(&mut self.db.get_read_only().await?, &note.user_id).await?;
-				user_cache.insert(note.user_id.clone(), u);
-				user_cache.get(&note.user_id).ok_or("no user")?
-			}
+		let user = if let Some(u) = user_cache.read().await.get(&note.user_id).cloned() {
+			u
+		} else {
+			let mut w_lock = user_cache.write().await;
+			let u = MiUser::load_by_id(&mut self.db.get_read_only().await?, &note.user_id).await?;
+			w_lock.insert(note.user_id.clone(), u.clone());
+			u
 		};
 		let visible_user_ids = if note.visibility == NoteVisibility::Specified {
 			Some(note.visible_user_ids)
@@ -166,7 +215,9 @@ impl NoteService {
 			let k = self.emoji_service.normalize_reaction(k);
 			reactions.0.insert(k, v);
 		}
-		let files = {
+		let files = if note.file_ids.is_empty() {
+			vec![]
+		} else {
 			let files: Vec<MiDriveFile> = {
 				use crate::models::drive_file::drive_file::dsl::drive_file;
 				use crate::models::drive_file::drive_file::dsl::*;
@@ -486,7 +537,7 @@ pub struct PackedNote {
 	cw: Option<String>,
 	visibility: NoteVisibility,
 	#[serde(rename = "searchableBy")]
-	searchable_by: Option<SearchableTypes>,
+	searchable_by: Option<NoteSearchableBy>,
 	#[serde(rename = "localOnly")]
 	local_only: bool,
 	#[serde(rename = "reactionAcceptance")]
