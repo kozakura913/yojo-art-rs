@@ -33,6 +33,8 @@ pub enum PermissionKind {
 	ReadDrive,
 	#[serde(rename = "read:account")]
 	ReadAccount,
+	#[serde(rename = "write:reactions")]
+	WriteReactions,
 }
 impl TokenPermission {
 	pub fn type_str(&self) -> &'static str {

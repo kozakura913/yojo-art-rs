@@ -1,16 +1,16 @@
 use crate::{
-	DataBase, ServerError,
 	models::{
 		note::{MiNote, NoteVisibility},
 		user::MiUser,
 		user_profile::MiUserProfile,
-	},
+	}, service::user::UserService, DataBase, ServerError
 };
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Debug)]
 pub struct TimelineService {
 	db: DataBase,
+	user_service: UserService,
 	//TODO キャッシュ
 }
 #[derive(Clone, Debug)]
@@ -35,8 +35,8 @@ pub struct TimelineHints {
 	pub user_cache: HashMap<String, MiUser>,
 }
 impl TimelineService {
-	pub fn new(db: DataBase) -> Self {
-		Self { db }
+	pub fn new(db: DataBase,user_service:UserService) -> Self {
+		Self { db ,user_service}
 	}
 	pub async fn get_stl(
 		&self,
@@ -278,7 +278,7 @@ impl TimelineService {
 			let followings_user = &mut hint.followings_user;
 			let f_following = async {
 				if followings_user.is_none() {
-					followings_user.replace(self.followings(me_id).await?);
+					followings_user.replace(self.user_service.followings(me_id).await?);
 				}
 				Ok::<&HashSet<std::string::String>, diesel::result::Error>(
 					followings_user.as_ref().unwrap(),
@@ -287,7 +287,7 @@ impl TimelineService {
 			let renote_muting_user = &mut hint.renote_muting_user;
 			let f_renote_muting = async {
 				if renote_muting_user.is_none() {
-					renote_muting_user.replace(self.renote_muting(me_id).await?);
+					renote_muting_user.replace(self.user_service.renote_muting(me_id).await?);
 				}
 				Ok::<&HashSet<std::string::String>, diesel::result::Error>(
 					renote_muting_user.as_ref().unwrap(),
@@ -296,7 +296,7 @@ impl TimelineService {
 			let hint_muted_instances = &mut hint.muted_instances;
 			let f_muted_instances = async {
 				if hint_muted_instances.is_none() {
-					hint_muted_instances.replace(self.muted_instances(me_id).await?);
+					hint_muted_instances.replace(self.user_service.muted_instances(me_id).await?);
 				}
 				Ok::<&HashSet<std::string::String>, diesel::result::Error>(
 					hint_muted_instances.as_ref().unwrap(),
@@ -389,7 +389,7 @@ impl TimelineService {
 		let followings_user = &mut hint.followings_user;
 		let f_following = async {
 			if followings_user.is_none() {
-				followings_user.replace(self.followings(me_id).await?);
+				followings_user.replace(self.user_service.followings(me_id).await?);
 			}
 			Ok::<&HashSet<std::string::String>, diesel::result::Error>(
 				followings_user.as_ref().unwrap(),
@@ -398,7 +398,7 @@ impl TimelineService {
 		let hint_muted_instances = &mut hint.muted_instances;
 		let f_muted_instances = async {
 			if hint_muted_instances.is_none() {
-				hint_muted_instances.replace(self.muted_instances(me_id).await?);
+				hint_muted_instances.replace(self.user_service.muted_instances(me_id).await?);
 			}
 			Ok::<&HashSet<std::string::String>, diesel::result::Error>(
 				hint_muted_instances.as_ref().unwrap(),
@@ -508,7 +508,7 @@ impl TimelineService {
 			let hint_muted_instances = &mut hint.muted_instances;
 			let f_muted_instances = async {
 				if hint_muted_instances.is_none() {
-					hint_muted_instances.replace(self.muted_instances(me_id).await?);
+					hint_muted_instances.replace(self.user_service.muted_instances(me_id).await?);
 				}
 				Ok::<&HashSet<std::string::String>, diesel::result::Error>(
 					hint_muted_instances.as_ref().unwrap(),
@@ -608,7 +608,7 @@ impl TimelineService {
 		let followings_user = &mut hint.followings_user;
 		let f_following = async {
 			if followings_user.is_none() {
-				followings_user.replace(self.followings(me_id).await?);
+				followings_user.replace(self.user_service.followings(me_id).await?);
 			}
 			Ok::<&HashSet<std::string::String>, diesel::result::Error>(
 				followings_user.as_ref().unwrap(),
@@ -617,7 +617,7 @@ impl TimelineService {
 		let hint_muted_instances = &mut hint.muted_instances;
 		let f_muted_instances = async {
 			if hint_muted_instances.is_none() {
-				hint_muted_instances.replace(self.muted_instances(me_id).await?);
+				hint_muted_instances.replace(self.user_service.muted_instances(me_id).await?);
 			}
 			Ok::<&HashSet<std::string::String>, diesel::result::Error>(
 				hint_muted_instances.as_ref().unwrap(),
@@ -709,74 +709,4 @@ impl TimelineService {
 		}
 		Ok(raw_tl)
 	}
-	async fn renote_muting(&self, me_id: &str) -> Result<HashSet<String>, diesel::result::Error> {
-		let mut con = self.db.get_read_only().await.map_err(|e| {
-			eprintln!("{}:{} {:?}", file!(), line!(), e);
-			diesel::result::Error::BrokenTransactionManager
-		})?;
-
-		let mi_renote_muting: Vec<String> = {
-			use crate::models::renote_muting::renote_muting::dsl::renote_muting;
-			use crate::models::renote_muting::renote_muting::dsl::*;
-			use diesel::{ExpressionMethods, QueryDsl};
-			use diesel_async::RunQueryDsl;
-			renote_muting
-				.filter(muterId.eq(me_id))
-				.select(muteeId)
-				.load(&mut con)
-				.await
-		}?;
-		Ok(to_set(mi_renote_muting.into_iter()))
-	}
-
-	async fn muted_instances(&self, me_id: &str) -> Result<HashSet<String>, diesel::result::Error> {
-		let mut con = self.db.get_read_only().await.map_err(|e| {
-			eprintln!("{}:{} {:?}", file!(), line!(), e);
-			diesel::result::Error::BrokenTransactionManager
-		})?;
-		let res: MiUserProfile = {
-			use crate::models::user_profile::user_profile::dsl::user_profile;
-			use crate::models::user_profile::user_profile::dsl::*;
-			use diesel::ExpressionMethods;
-			use diesel::{QueryDsl, SelectableHelper};
-			use diesel_async::RunQueryDsl;
-			user_profile
-				.filter(userId.eq(me_id))
-				.select(MiUserProfile::as_select())
-				.first(&mut con)
-				.await
-		}?;
-		Ok(to_set(res.muted_instances.into_inner().into_iter()))
-	}
-
-	async fn followings(&self, me_id: &str) -> Result<HashSet<String>, diesel::result::Error> {
-		let mut con = self.db.get_read_only().await.map_err(|e| {
-			eprintln!("{}:{} {:?}", file!(), line!(), e);
-			diesel::result::Error::BrokenTransactionManager
-		})?;
-		let mi_followings: Vec<String> = {
-			use crate::models::following::following::dsl::following;
-			use crate::models::following::following::dsl::*;
-			use diesel::{ExpressionMethods, QueryDsl};
-			use diesel_async::RunQueryDsl;
-			following
-				.filter(followerId.eq(me_id))
-				.select(followeeId)
-				.load(&mut con)
-				.await
-		}?;
-		Ok(to_set(mi_followings.into_iter()))
-	}
-}
-fn to_set<T>(v: impl Iterator<Item = T>) -> HashSet<T>
-where
-	T: std::hash::Hash,
-	T: PartialEq,
-	T: Eq,
-{
-	let mut s = HashSet::new();
-	for f in v {
-		s.insert(f);
-	}
-	s
 }

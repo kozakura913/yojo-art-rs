@@ -58,6 +58,7 @@ strum = "0.26.3"
 bigdecimal = "*"
 
 redis = { version = "0.26", features = ["tokio-comp"] }
+emojis = "0.7.0"
 
 #[profile.dev]
 #opt-level = 1

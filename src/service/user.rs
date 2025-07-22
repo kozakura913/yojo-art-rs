@@ -583,6 +583,74 @@ impl UserService {
 			OnlineStatus::unknown
 		}
 	}
+	pub async fn followings(&self, me_id: &str) -> Result<HashSet<String>, diesel::result::Error> {
+		let mut con = self.db.get_read_only().await.map_err(|e| {
+			eprintln!("{}:{} {:?}", file!(), line!(), e);
+			diesel::result::Error::BrokenTransactionManager
+		})?;
+		let mi_followings: Vec<String> = {
+			use crate::models::following::following::dsl::following;
+			use crate::models::following::following::dsl::*;
+			use diesel::{ExpressionMethods, QueryDsl};
+			use diesel_async::RunQueryDsl;
+			following
+				.filter(followerId.eq(me_id))
+				.select(followeeId)
+				.load(&mut con)
+				.await
+		}?;
+		Ok(to_set(mi_followings.into_iter()))
+	}
+	pub async fn renote_muting(&self, me_id: &str) -> Result<HashSet<String>, diesel::result::Error> {
+		let mut con = self.db.get_read_only().await.map_err(|e| {
+			eprintln!("{}:{} {:?}", file!(), line!(), e);
+			diesel::result::Error::BrokenTransactionManager
+		})?;
+
+		let mi_renote_muting: Vec<String> = {
+			use crate::models::renote_muting::renote_muting::dsl::renote_muting;
+			use crate::models::renote_muting::renote_muting::dsl::*;
+			use diesel::{ExpressionMethods, QueryDsl};
+			use diesel_async::RunQueryDsl;
+			renote_muting
+				.filter(muterId.eq(me_id))
+				.select(muteeId)
+				.load(&mut con)
+				.await
+		}?;
+		Ok(to_set(mi_renote_muting.into_iter()))
+	}
+	pub async fn muted_instances(&self, me_id: &str) -> Result<HashSet<String>, diesel::result::Error> {
+		let mut con = self.db.get_read_only().await.map_err(|e| {
+			eprintln!("{}:{} {:?}", file!(), line!(), e);
+			diesel::result::Error::BrokenTransactionManager
+		})?;
+		let res: MiUserProfile = {
+			use crate::models::user_profile::user_profile::dsl::user_profile;
+			use crate::models::user_profile::user_profile::dsl::*;
+			use diesel::ExpressionMethods;
+			use diesel::{QueryDsl, SelectableHelper};
+			use diesel_async::RunQueryDsl;
+			user_profile
+				.filter(userId.eq(me_id))
+				.select(MiUserProfile::as_select())
+				.first(&mut con)
+				.await
+		}?;
+		Ok(to_set(res.muted_instances.into_inner().into_iter()))
+	}
+}
+fn to_set<T>(v: impl Iterator<Item = T>) -> HashSet<T>
+where
+	T: std::hash::Hash,
+	T: PartialEq,
+	T: Eq,
+{
+	let mut s = HashSet::new();
+	for f in v {
+		s.insert(f);
+	}
+	s
 }
 pub trait PackedUser:
 	Clone + std::fmt::Debug + serde::ser::Serialize + serde::de::Deserialize<'static>

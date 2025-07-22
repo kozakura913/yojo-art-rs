@@ -9,8 +9,7 @@ use axum::{
 use futures::StreamExt;
 
 use crate::{
-	Context, ServerError,
-	service::token_service::{PermissionKind, Token},
+	api::notes::reactions, service::token_service::{PermissionKind, Token}, Context, ServerError
 };
 
 use super::{default_route, notes};
@@ -53,6 +52,7 @@ pub fn route<S>(ctx: &Context) -> Router<S> {
 	//let r = endpoint!(r, drive::files::multipart::finish_upload::post);
 	//let r = endpoint!(r, drive::files::multipart::abort::post);
 	let r = endpoint!(r, notes::timeline::post, [PermissionKind::ReadAccount]);
+	let r = endpoint!(r, notes::reactions::create::post, [PermissionKind::WriteReactions]);
 	let r = endpoint!(r, notes::local_timeline::post, []);
 	let r = endpoint!(
 		r,

@@ -6,8 +6,8 @@ use tokio::sync::{Mutex, RwLock};
 use crate::{DBConnection, DataBase, models::emoji::MiEmoji};
 #[derive(Clone, Debug)]
 pub struct ParsedEmoji {
-	name: Option<String>,
-	host: Option<String>,
+	pub name: Option<String>,
+	pub host: Option<String>,
 }
 impl TryInto<String> for &ParsedEmoji {
 	type Error = ();

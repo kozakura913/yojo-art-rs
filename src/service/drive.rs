@@ -213,7 +213,7 @@ impl DriveService {
 		thumbnail_key: Option<&str>,
 		base_url: String,
 	) -> Option<(MiDriveFile, Option<serde_json::Value>)> {
-		let mut con = self.db.get_writeable().await?;
+		let mut con = self.db.get_writeable().await.ok()?;
 		let user_id = user.as_ref().map(|user| user.id.as_str());
 		let instance = self.meta_service.load(true).await?;
 		let (user_role_nsfw, profile) = match user_id {

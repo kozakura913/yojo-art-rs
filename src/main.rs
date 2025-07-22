@@ -43,7 +43,7 @@ where
 	fn from(value: T) -> Self {
 		Self {
 			status: StatusCode::INTERNAL_SERVER_ERROR,
-			text: format!("{:?}", value),
+			text: format!("{} {:?}",std::any::type_name::<T>(), value),
 		}
 	}
 }
@@ -155,6 +155,8 @@ pub struct Context {
 	pub timeline_service: TimelineService,
 	pub fanout_timeline_service: FanoutTimelineService,
 	pub note_service: NoteService,
+	pub emoji_service: EmojiService,
+	pub id_service: IdService,
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 enum FilterType {
@@ -298,7 +300,7 @@ fn main() {
 		);
 		let event_service = EventService::new(
 			redis_for_pubsub.clone().unwrap_or(redis.clone()),
-			misskey_config.clone(),
+			parsed_misskey_config.clone(),
 		);
 		let drive_service = DriveService::new(
 			misskey_config.clone(),
@@ -320,7 +322,7 @@ fn main() {
 			emoji_service.clone(),
 			event_service.clone(),
 		);
-		let timeline_service = TimelineService::new(db.clone());
+		let timeline_service = TimelineService::new(db.clone(),user_service.clone());
 		let fanout_timeline_service = FanoutTimelineService::new(
 			parsed_misskey_config.clone(),
 			db.clone(),
@@ -346,6 +348,8 @@ fn main() {
 			note_service,
 			timeline_service,
 			fanout_timeline_service,
+			emoji_service,
+			id_service,
 		};
 		let http_addr: SocketAddr = arg_tup.config.bind_addr.parse().unwrap();
 		let app = api::endpoints::route(&arg_tup);
@@ -471,14 +475,10 @@ impl DataBase {
 		};
 		Ok(Self(pool))
 	}
-	pub async fn get_writeable(&self) -> Option<DBConnection> {
-		match self.0.get().await {
-			Ok(c) => Some(c),
-			Err(e) => {
-				eprintln!("DB Error {:?}", e);
-				None
-			}
-		}
+	pub async fn get_writeable(
+		&self,
+	) -> Result<DBConnection, diesel_async::pooled_connection::bb8::RunError> {
+		self.0.get().await
 	}
 	pub async fn get_read_only(
 		&self,
