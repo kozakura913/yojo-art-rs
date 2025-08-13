@@ -98,11 +98,9 @@ pub struct ParsedMisskeyConfig {
 	remote_proxy: Option<String>,
 	ap_file_base_url: Option<String>,
 	host: String,
-	raw: MisskeyConfig,
 }
 impl From<MisskeyConfig> for ParsedMisskeyConfig {
 	fn from(f: MisskeyConfig) -> Self {
-		let raw = f.clone();
 		let url = reqwest::Url::parse(f.url.as_str()).expect("url parse");
 		let url_string = url.to_string();
 		let host = url.host().expect("bad server url config").to_string();
@@ -114,7 +112,6 @@ impl From<MisskeyConfig> for ParsedMisskeyConfig {
 			remote_proxy: f.remote_proxy,
 			ap_file_base_url: f.ap_file_base_url,
 			host,
-			raw,
 		}
 	}
 }
