@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 
 use crate::{
 	models::{self, emoji::{EmojiCopyPermissions, MiEmoji}, following::MiFollowerInbox, note::{MiNote, NoteReactionAcceptances, NoteVisibility}, note_reaction::MiNoteReaction, user::MiUserInbox}, service::{
-		activitypub, event::NoteEventType, timeline::{TLOptions, TimelineHints}, token_service::Token
+		activitypub::{self, deliver::DeliverTarget, types::ApLike}, event::NoteEventType, timeline::{TLOptions, TimelineHints}, token_service::Token
 	}, Context, ServerError
 };
 const FALLBACK:&'static str = "\u{2764}";
@@ -76,7 +76,7 @@ pub async fn post(
 	};
 	let reaction=MiNoteReaction{
 		id:ctx.id_service.gen_id(None),
-		note_id: note.id,
+		note_id: note.id.clone(),
 		user_id:me.clone(),
 		reaction,
 	};
@@ -143,139 +143,17 @@ pub async fn post(
 	let event_body=serde_json::to_value(event_body)?;
 	ctx.event_service.publish_note_stream(&reaction.note_id,Some(NoteEventType::NoteUpdated), event_body).await?;
 	//TODO 通知の作成
-	//TODO render処理の切り出し
-	#[derive(Debug, Deserialize,Serialize)]
-	struct ApImage{
-		#[serde(rename = "type")]
-		ap_type: &'static str,
-		#[serde(rename = "mediaType")]
-		media_type:String,
-		url:String,
-	}
-	#[derive(Debug, Deserialize,Serialize)]
-	struct ApMisskeyLicense{
-		#[serde(rename = "freeText")]
-		free_text:Option<String>,
-	}
-	#[derive(Debug, Deserialize,Serialize)]
-	struct ApEmojiAuthor{
-		author:String,
-		creator:String,
-	}
-	#[derive(Debug, Deserialize,Serialize)]
-	struct ApEmoji{
-		id:String,
-		#[serde(rename = "type")]
-		ap_type: &'static str,
-		name:String,
-		updated: String,
-		icon:ApImage,
-		_misskey_license:ApMisskeyLicense,
-		keywords:String,
-		#[serde(rename = "isSensitive")]
-		is_sensitive:bool,
-		#[serde(skip_serializing_if = "Option::is_none")]
-		#[serde(rename = "copyPermission")]
-		copy_permission:Option<EmojiCopyPermissions>,
-		#[serde(skip_serializing_if = "Option::is_none")]
-		category:Option<String>,
-		#[serde(skip_serializing_if = "Option::is_none")]
-		license:Option<String>,
-		#[serde(skip_serializing_if = "Option::is_none")]
-		#[serde(rename = "usageInfo")]
-		usage_info:Option<String>,
-		#[serde(skip_serializing_if = "Option::is_none")]
-		description:Option<String>,
-		#[serde(skip_serializing_if = "Option::is_none")]
-		#[serde(rename = "isBasedOn")]
-		is_based_on:Option<String>,
-		#[serde(skip_serializing_if = "Option::is_none")]
-		author:Option<ApEmojiAuthor>,
-	}
-	fn ap_emoji(emoji:MiEmoji,ctx:&Context)->ApEmoji{
-		ApEmoji{
-			id:format!("{}/emojis/{}",ctx.misskey_config.url,emoji.name),
-			ap_type:"Emoji",
-			name:emoji.name,
-			updated:emoji.updated_at.map(|t|t.and_utc()).unwrap_or_else(||chrono::Utc::now()).to_rfc3339(),
-			icon:ApImage{
-				ap_type: "Image",
-				media_type: emoji.image_type.unwrap_or_else(||"image/png".into()),
-				url: emoji.public_url,
-			},
-			_misskey_license:ApMisskeyLicense{
-				free_text: emoji.license.clone(),
-			},
-			keywords:emoji.aliases.iter().fold(String::new(),|a,b|a+b),
-			is_sensitive:emoji.is_sensitive,
-			copy_permission:emoji.copy_permission,
-			category:emoji.category,
-			license:emoji.license,
-			usage_info:emoji.usage_info,
-			description:emoji.description,
-			is_based_on:emoji.is_based_on,
-			author:emoji.author.map(|author|ApEmojiAuthor { creator: author.clone(),author })
-		}
-	}
-	#[derive(Debug, Deserialize,Serialize)]
-	struct ApLike{
-		#[serde(rename = "type")]
-		ap_type: &'static str,
-		id: String,
-		actor: String,
-		object: String,
-		content: String,
-		_misskey_reaction: String,
-		tag:Vec<ApEmoji>,
-	}
-	let mut tag=vec![];
-	if let Some(custom_emoji)=custom_emoji.take(){
-		tag.push(ap_emoji(custom_emoji,&ctx));
-	}
-	let content=ApLike{
-		ap_type: "Like",
-		id: format!("{}likes/{}",ctx.misskey_config.url,reaction.id),
-		actor: format!("{}users/{}",ctx.misskey_config.url,reaction.user_id),
-		object: note.uri.unwrap_or_else(||format!("{}notes/{}",ctx.misskey_config.url,reaction.note_id)),
-		content: reaction.reaction.to_owned(),
-		_misskey_reaction:reaction.reaction.to_owned(),
-		tag,
-	};
-	let content=activitypub::render::add_context(content,&ctx)?;
+	let content=ctx.ap_render_service.render_like(&note,reaction.clone(),custom_emoji.take());
+	let content=ctx.ap_render_service.add_context(content)?;
+	//メンション、宛先ユーザーにも配送した方が良いかも
 	if note.user_host.is_none(){
-		return Ok(StatusCode::NO_CONTENT.into_response());
+		//ノート作者がローカルユーザーならフォロワーのみ
+		let target=[DeliverTarget::Follower];
+		ctx.deliver_service.post(target.into_iter(),reaction.user_id, content).await?;
+	}else{
+		//ノート作者にも配送
+		let target=[DeliverTarget::Direct(note.user_id),DeliverTarget::Follower];
+		ctx.deliver_service.post(target.into_iter(),reaction.user_id, content).await?;
 	}
-	let mut dbcon=ctx.raw_db.get_read_only().await?;
-	let target_user=MiUserInbox::load_by_id(&mut dbcon,&note.user_id).await?;
-	let mut inbox_urls=HashSet::new();
-	if let Some(inbox)=target_user.shared_inbox{
-		inbox_urls.insert(inbox);
-	}else if let Some(inbox)=target_user.inbox{
-		inbox_urls.insert(inbox);
-	}
-	let me_id=reaction.user_id;
-	let res: Vec<MiFollowerInbox> = {
-		use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
-		use diesel_async::RunQueryDsl;
-		use crate::models::following::following::dsl::following;
-		use crate::models::following::following::dsl::*;
-		following
-			.filter(followerHost.is_null())
-			.filter(followeeId.eq(&me_id))
-			.select(MiFollowerInbox::as_select())
-			.load(&mut dbcon)
-			.await
-			.map_err(|e| {
-				eprintln!("{}:{} {:?}", file!(), line!(), e);
-			})
-	}?;
-	for t in res{
-		if let Some(shared_inbox)=t.follower_shared_inbox{
-			inbox_urls.insert(shared_inbox);
-		}else if let Some(inbox)=t.follower_inbox{
-			inbox_urls.insert(inbox);
-		}
-	}
-	ctx.deliver_service.post(inbox_urls.into_iter(),me_id, content).await;
 	Ok(StatusCode::NO_CONTENT.into_response())
 }

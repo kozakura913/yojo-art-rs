@@ -15,7 +15,7 @@ use service::{
 	role::RoleService, token_service::TokenService, user::UserService,
 };
 
-use crate::service::{activitypub::{deliver::APDeliverService, signature::APSignatureService}, timeline::TimelineService};
+use crate::service::{activitypub::{deliver::APDeliverService, render::ApRenderService, signature::APSignatureService}, timeline::TimelineService};
 mod api;
 mod browsersafe;
 mod models;
@@ -163,6 +163,7 @@ pub struct Context {
 	pub emoji_service: EmojiService,
 	pub id_service: IdService,
 	pub deliver_service: APDeliverService,
+	pub ap_render_service: ApRenderService,
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 enum FilterType {
@@ -349,7 +350,8 @@ fn main() {
 		);
 		let client = reqwest::Client::new();
 		let ap_signature_service=APSignatureService::new(db.clone(),client.clone(),parsed_misskey_config.clone());
-		let deliver_service=APDeliverService::new(ap_signature_service,redis_for_job_queue).await;
+		let deliver_service=APDeliverService::new(ap_signature_service,db.clone(),redis_for_job_queue).await;
+		let ap_render_service=ApRenderService::new(misskey_config.clone());
 
 		let arg_tup = Context {
 			config,
@@ -370,6 +372,7 @@ fn main() {
 			emoji_service,
 			id_service,
 			deliver_service,
+			ap_render_service,
 		};
 		let http_addr: SocketAddr = arg_tup.config.bind_addr.parse().unwrap();
 		let app = api::endpoints::route(&arg_tup);
