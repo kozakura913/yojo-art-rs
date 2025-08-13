@@ -15,7 +15,12 @@ use service::{
 	role::RoleService, token_service::TokenService, user::UserService,
 };
 
-use crate::service::{activitypub::{deliver::APDeliverService, render::ApRenderService, signature::APSignatureService}, timeline::TimelineService};
+use crate::service::{
+	activitypub::{
+		deliver::APDeliverService, render::ApRenderService, signature::APSignatureService,
+	},
+	timeline::TimelineService,
+};
 mod api;
 mod browsersafe;
 mod models;
@@ -43,7 +48,7 @@ where
 	fn from(value: T) -> Self {
 		Self {
 			status: StatusCode::INTERNAL_SERVER_ERROR,
-			text: format!("{} {:?}",std::any::type_name::<T>(), value),
+			text: format!("{} {:?}", std::any::type_name::<T>(), value),
 		}
 	}
 }
@@ -93,11 +98,11 @@ pub struct ParsedMisskeyConfig {
 	remote_proxy: Option<String>,
 	ap_file_base_url: Option<String>,
 	host: String,
-	raw:MisskeyConfig,
+	raw: MisskeyConfig,
 }
 impl From<MisskeyConfig> for ParsedMisskeyConfig {
 	fn from(f: MisskeyConfig) -> Self {
-		let raw=f.clone();
+		let raw = f.clone();
 		let url = reqwest::Url::parse(f.url.as_str()).expect("url parse");
 		let url_string = url.to_string();
 		let host = url.host().expect("bad server url config").to_string();
@@ -245,8 +250,8 @@ fn main() {
 	}
 	let mut misskey_config: MisskeyConfig =
 		serde_yaml::from_reader(std::fs::File::open(&".config/default.yml").unwrap()).unwrap();
-	if !misskey_config.url.ends_with("/"){
-		misskey_config.url+="/";
+	if !misskey_config.url.ends_with("/") {
+		misskey_config.url += "/";
 	}
 	let parsed_misskey_config: ParsedMisskeyConfig = misskey_config.clone().into();
 	let misskey_config = Arc::new(misskey_config);
@@ -340,7 +345,7 @@ fn main() {
 			emoji_service.clone(),
 			event_service.clone(),
 		);
-		let timeline_service = TimelineService::new(db.clone(),user_service.clone());
+		let timeline_service = TimelineService::new(db.clone(), user_service.clone());
 		let fanout_timeline_service = FanoutTimelineService::new(
 			parsed_misskey_config.clone(),
 			db.clone(),
@@ -349,9 +354,11 @@ fn main() {
 			timeline_service.clone(),
 		);
 		let client = reqwest::Client::new();
-		let ap_signature_service=APSignatureService::new(db.clone(),client.clone(),parsed_misskey_config.clone());
-		let deliver_service=APDeliverService::new(ap_signature_service,db.clone(),redis_for_job_queue).await;
-		let ap_render_service=ApRenderService::new(misskey_config.clone());
+		let ap_signature_service =
+			APSignatureService::new(db.clone(), client.clone(), parsed_misskey_config.clone());
+		let deliver_service =
+			APDeliverService::new(ap_signature_service, db.clone(), redis_for_job_queue).await;
+		let ap_render_service = ApRenderService::new(misskey_config.clone());
 
 		let arg_tup = Context {
 			config,

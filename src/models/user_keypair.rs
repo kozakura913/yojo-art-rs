@@ -34,13 +34,14 @@ impl MiUserKeypair {
 		con: &mut DBConnection<'_>,
 		user_id: &str,
 	) -> Result<Self, diesel::result::Error> {
-		use diesel::QueryDsl;
-		use diesel::SelectableHelper;
-		use diesel::ExpressionMethods;
-		use diesel_async::RunQueryDsl;
 		use self::user_keypair::dsl::user_keypair;
 		use self::user_keypair::dsl::*;
-		user_keypair.filter(userId.eq(user_id))
+		use diesel::ExpressionMethods;
+		use diesel::QueryDsl;
+		use diesel::SelectableHelper;
+		use diesel_async::RunQueryDsl;
+		user_keypair
+			.filter(userId.eq(user_id))
 			.select(Self::as_select())
 			.first(con)
 			.await

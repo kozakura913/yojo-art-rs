@@ -1,3 +1,4 @@
+pub mod activitypub;
 pub mod announcement;
 pub mod drive;
 pub mod emoji;
@@ -12,4 +13,3 @@ pub mod role;
 pub mod timeline;
 pub mod token_service;
 pub mod user;
-pub mod activitypub;

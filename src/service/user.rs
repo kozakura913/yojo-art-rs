@@ -601,7 +601,10 @@ impl UserService {
 		}?;
 		Ok(to_set(mi_followings.into_iter()))
 	}
-	pub async fn renote_muting(&self, me_id: &str) -> Result<HashSet<String>, diesel::result::Error> {
+	pub async fn renote_muting(
+		&self,
+		me_id: &str,
+	) -> Result<HashSet<String>, diesel::result::Error> {
 		let mut con = self.db.get_read_only().await.map_err(|e| {
 			eprintln!("{}:{} {:?}", file!(), line!(), e);
 			diesel::result::Error::BrokenTransactionManager
@@ -620,7 +623,10 @@ impl UserService {
 		}?;
 		Ok(to_set(mi_renote_muting.into_iter()))
 	}
-	pub async fn muted_instances(&self, me_id: &str) -> Result<HashSet<String>, diesel::result::Error> {
+	pub async fn muted_instances(
+		&self,
+		me_id: &str,
+	) -> Result<HashSet<String>, diesel::result::Error> {
 		let mut con = self.db.get_read_only().await.map_err(|e| {
 			eprintln!("{}:{} {:?}", file!(), line!(), e);
 			diesel::result::Error::BrokenTransactionManager

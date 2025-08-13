@@ -1,9 +1,11 @@
 use crate::{
+	DataBase, ServerError,
 	models::{
 		note::{MiNote, NoteVisibility},
 		user::MiUser,
 		user_profile::MiUserProfile,
-	}, service::user::UserService, DataBase, ServerError
+	},
+	service::user::UserService,
 };
 use std::collections::{HashMap, HashSet};
 
@@ -35,8 +37,8 @@ pub struct TimelineHints {
 	pub user_cache: HashMap<String, MiUser>,
 }
 impl TimelineService {
-	pub fn new(db: DataBase,user_service:UserService) -> Self {
-		Self { db ,user_service}
+	pub fn new(db: DataBase, user_service: UserService) -> Self {
+		Self { db, user_service }
 	}
 	pub async fn get_stl(
 		&self,

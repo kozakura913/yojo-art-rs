@@ -57,9 +57,9 @@ impl From<redis::RedisError> for EventError {
 	}
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
-struct Event{
-	channel:String,
-	message:serde_json::Value,
+struct Event {
+	channel: String,
+	message: serde_json::Value,
 }
 impl EventService {
 	pub fn new(redis: ConnectionManager, config: Arc<ParsedMisskeyConfig>) -> Self {
@@ -81,14 +81,14 @@ impl EventService {
 				serde_json::Value::Object(map)
 			}
 		};
-		let event=Event{
-			channel:channel.channel_id(),
+		let event = Event {
+			channel: channel.channel_id(),
 			message,
 		};
 		let res = serde_json::to_string(&event)?;
 		let mut r = self.redis.clone();
 		let host = &self.config.host;
-		println!("publish event {} {}", host,res);
+		println!("publish event {} {}", host, res);
 		Ok(r.publish::<&str, String, ()>(host, res).await?)
 	}
 	pub async fn publish_main_stream(
@@ -115,16 +115,20 @@ impl EventService {
 			None => None,
 		};
 		#[derive(Clone, Serialize, Deserialize, Debug)]
-		struct EventBody{
-			id:String,
-			body:serde_json::Value,
+		struct EventBody {
+			id: String,
+			body: serde_json::Value,
 		}
-		let event=EventBody{
-			id:note_id.clone(),
-			body:value,
+		let event = EventBody {
+			id: note_id.clone(),
+			body: value,
 		};
-		self.publish(StreamChannels::Note(note_id), event_type, Some(serde_json::to_value(event)?))
-			.await
+		self.publish(
+			StreamChannels::Note(note_id),
+			event_type,
+			Some(serde_json::to_value(event)?),
+		)
+		.await
 	}
 	pub async fn publish_drive_stream(
 		&self,

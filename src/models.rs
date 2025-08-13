@@ -20,7 +20,7 @@ pub mod poll_vote;
 pub mod renote_muting;
 pub mod role;
 pub mod user;
+pub mod user_keypair;
 pub mod user_memo;
 pub mod user_note_pining;
 pub mod user_profile;
-pub mod user_keypair;

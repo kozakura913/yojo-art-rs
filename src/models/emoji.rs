@@ -118,15 +118,16 @@ pub enum EmojiCopyPermissions {
 #[diesel(postgres_type(name = "emoji_copypermission_enum"))]
 pub struct EmojiCopyPermissionsType;
 
-impl MiEmoji{
+impl MiEmoji {
 	pub async fn load_local_emoji(
 		con: &mut DBConnection<'_>,
 		emoji_name: &str,
 	) -> Result<Self, diesel::result::Error> {
 		use self::emoji::dsl::emoji;
 		use self::emoji::dsl::*;
-		emoji.filter(name.eq(emoji_name))
-		.filter(host.is_null())
+		emoji
+			.filter(name.eq(emoji_name))
+			.filter(host.is_null())
 			.select(Self::as_select())
 			.first(con)
 			.await
@@ -138,8 +139,9 @@ impl MiEmoji{
 	) -> Result<Self, diesel::result::Error> {
 		use self::emoji::dsl::emoji;
 		use self::emoji::dsl::*;
-		emoji.filter(name.eq(emoji_name))
-		.filter(host.eq(emoji_host))
+		emoji
+			.filter(name.eq(emoji_name))
+			.filter(host.eq(emoji_host))
 			.select(Self::as_select())
 			.first(con)
 			.await
