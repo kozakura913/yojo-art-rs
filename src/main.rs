@@ -5,7 +5,7 @@ use axum::{
 	response::{IntoResponse, Response},
 };
 use diesel_async::AsyncPgConnection;
-use redis::aio::MultiplexedConnection;
+use redis::aio::ConnectionManager;
 use s3::Bucket;
 use serde::{Deserialize, Serialize};
 use service::{
@@ -15,7 +15,7 @@ use service::{
 	role::RoleService, token_service::TokenService, user::UserService,
 };
 
-use crate::service::timeline::TimelineService;
+use crate::service::{activitypub::{deliver::APDeliverService, signature::APSignatureService}, timeline::TimelineService};
 mod api;
 mod browsersafe;
 mod models;
@@ -81,6 +81,8 @@ pub struct MisskeyConfig {
 	redis_for_pubsub: Option<RedisConfig>,
 	#[serde(rename = "redisForTimelines")]
 	redis_for_timelines: Option<RedisConfig>,
+	#[serde(rename = "redisForJobQueue")]
+	redis_for_job_queue: Option<RedisConfig>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ParsedMisskeyConfig {
@@ -91,9 +93,11 @@ pub struct ParsedMisskeyConfig {
 	remote_proxy: Option<String>,
 	ap_file_base_url: Option<String>,
 	host: String,
+	raw:MisskeyConfig,
 }
 impl From<MisskeyConfig> for ParsedMisskeyConfig {
 	fn from(f: MisskeyConfig) -> Self {
+		let raw=f.clone();
 		let url = reqwest::Url::parse(f.url.as_str()).expect("url parse");
 		let url_string = url.to_string();
 		let host = url.host().expect("bad server url config").to_string();
@@ -105,6 +109,7 @@ impl From<MisskeyConfig> for ParsedMisskeyConfig {
 			remote_proxy: f.remote_proxy,
 			ap_file_base_url: f.ap_file_base_url,
 			host,
+			raw,
 		}
 	}
 }
@@ -138,11 +143,11 @@ impl DBConfig {
 		format!("postgres://{user}:{pass}@{host}:{port}/{db}")
 	}
 }
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Context {
 	config: Arc<ConfigFile>,
 	pub misskey_config: Arc<ParsedMisskeyConfig>,
-	pub redis: MultiplexedConnection,
+	pub redis: ConnectionManager,
 	client: reqwest::Client,
 	pub token_service: TokenService,
 	pub role_service: RoleService,
@@ -157,6 +162,7 @@ pub struct Context {
 	pub note_service: NoteService,
 	pub emoji_service: EmojiService,
 	pub id_service: IdService,
+	pub deliver_service: APDeliverService,
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 enum FilterType {
@@ -236,8 +242,11 @@ fn main() {
 			.write_all(default_config.as_bytes())
 			.unwrap();
 	}
-	let misskey_config: MisskeyConfig =
+	let mut misskey_config: MisskeyConfig =
 		serde_yaml::from_reader(std::fs::File::open(&".config/default.yml").unwrap()).unwrap();
+	if !misskey_config.url.ends_with("/"){
+		misskey_config.url+="/";
+	}
 	let parsed_misskey_config: ParsedMisskeyConfig = misskey_config.clone().into();
 	let misskey_config = Arc::new(misskey_config);
 	let parsed_misskey_config = Arc::new(parsed_misskey_config);
@@ -254,26 +263,34 @@ fn main() {
 		.redis_for_timelines
 		.as_ref()
 		.map(|redis_for_timelines| redis::Client::open(redis_for_timelines.to_url()).unwrap());
+	let redis_for_job_queue = misskey_config
+		.redis_for_job_queue
+		.as_ref()
+		.map(|redis_for_job_queue| redis::Client::open(redis_for_job_queue.to_url()).unwrap());
 	let rt = tokio::runtime::Builder::new_multi_thread()
 		.enable_all()
 		.build()
 		.unwrap();
 	rt.block_on(async {
-		let redis = redis
-			.get_multiplexed_tokio_connection()
+		let redis = redis::aio::ConnectionManager::new(redis)
 			.await
 			.map_err(|e| println!("{:?}", e))
 			.unwrap();
 		let redis_for_pubsub = match redis_for_pubsub {
-			Some(redis_for_pubsub) => redis_for_pubsub
-				.get_multiplexed_tokio_connection()
+			Some(redis_for_pubsub) => redis::aio::ConnectionManager::new(redis_for_pubsub)
 				.await
 				.ok(),
 			None => None,
 		};
 		let redis_for_timelines = match redis_for_timelines {
-			Some(redis_for_timelines) => redis_for_timelines
-				.get_multiplexed_tokio_connection()
+			Some(redis_for_timelines) => redis::aio::ConnectionManager::new(redis_for_timelines)
+				.await
+				.ok(),
+			None => None,
+		}
+		.unwrap_or(redis.clone());
+		let redis_for_job_queue = match redis_for_job_queue {
+			Some(redis_for_job_queue) => redis::aio::ConnectionManager::new(redis_for_job_queue)
 				.await
 				.ok(),
 			None => None,
@@ -331,6 +348,8 @@ fn main() {
 			timeline_service.clone(),
 		);
 		let client = reqwest::Client::new();
+		let ap_signature_service=APSignatureService::new(db.clone(),client.clone(),parsed_misskey_config.clone());
+		let deliver_service=APDeliverService::new(ap_signature_service,redis_for_job_queue).await;
 
 		let arg_tup = Context {
 			config,
@@ -350,6 +369,7 @@ fn main() {
 			fanout_timeline_service,
 			emoji_service,
 			id_service,
+			deliver_service,
 		};
 		let http_addr: SocketAddr = arg_tup.config.bind_addr.parse().unwrap();
 		let app = api::endpoints::route(&arg_tup);

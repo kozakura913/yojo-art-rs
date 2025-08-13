@@ -32,7 +32,7 @@ use super::{
 	role::RoleService,
 	user::{PackedUserLite, UserService},
 };
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct NoteService {
 	config: Arc<MisskeyConfig>,
 	db: DataBase,

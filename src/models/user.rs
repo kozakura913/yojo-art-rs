@@ -50,6 +50,8 @@ diesel::table! {
 		makeNotesHiddenBefore -> Nullable<Int4>,
 		setFederationAvatarShape -> Nullable<Bool>,
 		isSquareAvatars -> Nullable<Bool>,
+		inbox -> Nullable<VarChar>,
+		sharedInbox -> Nullable<VarChar>,
 	}
 }
 #[derive(
@@ -161,6 +163,37 @@ impl MiUser {
 		use self::user::dsl::user;
 		use self::user::dsl::*;
 		user.filter(token.eq(user_token))
+			.select(Self::as_select())
+			.first(con)
+			.await
+	}
+}
+
+#[derive(
+	PartialEq,
+	Debug,
+	Clone,
+	diesel::Insertable,
+	diesel::Queryable,
+	Selectable,
+	diesel::QueryableByName,
+	Serialize,
+	Deserialize,
+)]
+#[diesel(table_name = user)]
+pub struct MiUserInbox {
+	pub inbox: Option<String>,
+	#[diesel(column_name = "sharedInbox")]
+	pub shared_inbox: Option<String>,
+}
+impl MiUserInbox {
+	pub async fn load_by_id(
+		con: &mut DBConnection<'_>,
+		user_id: &str,
+	) -> Result<Self, diesel::result::Error> {
+		use self::user::dsl::user;
+		use self::user::dsl::*;
+		user.filter(id.eq(user_id))
 			.select(Self::as_select())
 			.first(con)
 			.await

@@ -1,6 +1,6 @@
 use std::{borrow::Cow, collections::HashSet, sync::Arc};
 
-use redis::{AsyncCommands, aio::MultiplexedConnection};
+use redis::{AsyncCommands, aio::ConnectionManager};
 
 use crate::{
 	DataBase, ParsedMisskeyConfig, ServerError,
@@ -72,12 +72,12 @@ impl FanoutTimelineName<'_> {
 		}
 	}
 }
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct FanoutTimelineService {
 	config: Arc<ParsedMisskeyConfig>,
 	db: DataBase,
 	meta_service: MetaService,
-	redis_for_timelines: MultiplexedConnection,
+	redis_for_timelines: ConnectionManager,
 	timeline_service: TimelineService,
 }
 impl FanoutTimelineService {
@@ -85,7 +85,7 @@ impl FanoutTimelineService {
 		config: Arc<ParsedMisskeyConfig>,
 		db: DataBase,
 		meta_service: MetaService,
-		redis_for_timelines: MultiplexedConnection,
+		redis_for_timelines: ConnectionManager,
 		timeline_service: TimelineService,
 	) -> Self {
 		Self {

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use redis::{AsyncCommands, aio::MultiplexedConnection};
+use redis::{AsyncCommands, aio::ConnectionManager};
 use serde::{Deserialize, Serialize};
 
 use crate::{MisskeyConfig, ParsedMisskeyConfig};
@@ -36,9 +36,9 @@ pub enum NoteEventType {
 	#[serde(rename = "reacted")]
 	NoteUpdated,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct EventService {
-	redis: MultiplexedConnection,
+	redis: ConnectionManager,
 	config: Arc<ParsedMisskeyConfig>,
 }
 #[derive(Debug)]
@@ -62,7 +62,7 @@ struct Event{
 	message:serde_json::Value,
 }
 impl EventService {
-	pub fn new(redis: MultiplexedConnection, config: Arc<ParsedMisskeyConfig>) -> Self {
+	pub fn new(redis: ConnectionManager, config: Arc<ParsedMisskeyConfig>) -> Self {
 		Self { redis, config }
 	}
 	async fn publish(

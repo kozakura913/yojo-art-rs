@@ -9,7 +9,7 @@ use diesel::{
 use diesel_async::RunQueryDsl;
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
-use yojo_art_utils::PgString;
+use yojo_art_utils::{PgEnum, PgString};
 
 use crate::DBConnection;
 
@@ -32,7 +32,7 @@ diesel::table! {
 		usageInfo -> Nullable<VarChar>,
 		description -> Nullable<VarChar>,
 		author -> Nullable<VarChar>,
-		copyPermission -> Nullable<VarChar>,
+		copyPermission -> Nullable<crate::models::emoji::EmojiCopyPermissionsType>,
 		isBasedOn -> Nullable<VarChar>,
 		importFrom -> Nullable<VarChar>,
 		roleIdsThatCanBeUsedThisEmojiAsReaction -> Array<VarChar>,
@@ -84,6 +84,7 @@ pub struct MiEmoji {
 	#[diesel(column_name = "roleIdsThatCanBeUsedThisEmojiAsReaction")]
 	pub role_ids_that_can_be_used_this_emoji_as_reaction: Vec<String>,
 }
+
 #[derive(
 	Copy,
 	Clone,
@@ -97,9 +98,10 @@ pub struct MiEmoji {
 	AsExpression,
 	Serialize,
 	Deserialize,
-	PgString,
+	PgEnum,
 )]
-#[diesel(sql_type = VarChar)]
+#[diesel(sql_type = EmojiCopyPermissionsType)]
+#[pg_type(sql_type = "EmojiCopyPermissionsType")]
 pub enum EmojiCopyPermissions {
 	#[default]
 	#[strum(serialize = "allow")]
@@ -112,6 +114,10 @@ pub enum EmojiCopyPermissions {
 	#[serde(rename = "conditional")]
 	Conditional,
 }
+#[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
+#[diesel(postgres_type(name = "emoji_copypermission_enum"))]
+pub struct EmojiCopyPermissionsType;
+
 impl MiEmoji{
 	pub async fn load_local_emoji(
 		con: &mut DBConnection<'_>,

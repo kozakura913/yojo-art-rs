@@ -7,7 +7,7 @@ use crate::{
 };
 use std::collections::{HashMap, HashSet};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct TimelineService {
 	db: DataBase,
 	user_service: UserService,

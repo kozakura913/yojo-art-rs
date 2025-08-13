@@ -12,3 +12,4 @@ pub mod role;
 pub mod timeline;
 pub mod token_service;
 pub mod user;
+pub mod activitypub;

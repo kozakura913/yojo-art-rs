@@ -52,3 +52,21 @@ pub struct MiFollowing {
 	#[diesel(column_name = "followeeSharedInbox")]
 	pub followee_shared_inbox: Option<String>,
 }
+
+#[derive(
+	PartialEq,
+	Eq,
+	Debug,
+	Clone,
+	diesel::Insertable,
+	diesel::Queryable,
+	Selectable,
+	diesel::QueryableByName,
+)]
+#[diesel(table_name = following)]
+pub struct MiFollowerInbox {
+	#[diesel(column_name = "followerInbox")]
+	pub follower_inbox: Option<String>,
+	#[diesel(column_name = "followerSharedInbox")]
+	pub follower_shared_inbox: Option<String>,
+}

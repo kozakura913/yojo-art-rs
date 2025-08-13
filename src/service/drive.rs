@@ -27,7 +27,7 @@ pub struct RegisterPreflightResult {
 	pub enable_sensitive_media_detection_for_videos: bool,
 	pub detected_name: String,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct DriveService {
 	config: Arc<MisskeyConfig>,
 	db: DataBase,

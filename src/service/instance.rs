@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use redis::{AsyncCommands, aio::MultiplexedConnection};
+use redis::{AsyncCommands, aio::ConnectionManager};
 use serde::{Deserialize, Serialize};
 
 use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
@@ -8,13 +8,13 @@ use diesel_async::RunQueryDsl;
 
 use crate::{DBConnection, DataBase, ServerError, models::instance::MiInstance};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct InstanceService {
 	db: DataBase,
-	redis: MultiplexedConnection,
+	redis: ConnectionManager,
 }
 impl InstanceService {
-	pub fn new(db: DataBase, redis: MultiplexedConnection) -> Self {
+	pub fn new(db: DataBase, redis: ConnectionManager) -> Self {
 		Self { db, redis }
 	}
 	pub async fn fetch(&self, host: impl AsRef<str>) -> Result<MiInstance, ServerError> {

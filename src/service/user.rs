@@ -4,7 +4,7 @@ use std::{
 };
 
 use chrono::Utc;
-use redis::{AsyncCommands, aio::MultiplexedConnection};
+use redis::{AsyncCommands, aio::ConnectionManager};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -25,10 +25,10 @@ use super::{
 
 pub const USER_ONLINE_THRESHOLD: i64 = 1000 * 60 * 10; // 10min
 pub const USER_ACTIVE_THRESHOLD: i64 = 1000 * 60 * 60 * 24 * 3; // 3days
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct UserService {
 	config: Arc<ParsedMisskeyConfig>,
-	redis: MultiplexedConnection,
+	redis: ConnectionManager,
 	db: DataBase,
 	id_service: IdService,
 	role_service: RoleService,
@@ -75,7 +75,7 @@ pub struct UserPackOptions {
 impl UserService {
 	pub fn new(
 		config: Arc<ParsedMisskeyConfig>,
-		redis: MultiplexedConnection,
+		redis: ConnectionManager,
 		db: DataBase,
 		id_service: IdService,
 		role_service: RoleService,
