@@ -84,7 +84,7 @@ impl APDeliverService{
 						use crate::models::following::following::dsl::following;
 						use crate::models::following::following::dsl::*;
 						following
-							.filter(followerHost.is_null())
+							.filter(followerHost.is_not_null())
 							.filter(followeeId.eq(&me_id))
 							.select(MiFollowerInbox::as_select())
 							.load(&mut dbcon)
