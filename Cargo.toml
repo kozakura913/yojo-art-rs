@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 yojo-art-utils = { path="./utils" }
+yojo-art-models = { path="./models" }
 tokio-stream = "*"
 tokio = { version = "1.0", features = ["rt-multi-thread","signal","process"] }
 tokio-util = { version = "0.7.8", features = ["io"] }
@@ -57,7 +58,7 @@ strum_macros = "0.26.4"
 strum = "0.26.3"
 bigdecimal = "*"
 
-redis = { version = "0.31", features = ["tokio-comp"] }
+redis = { version = "0.32", features = ["tokio-comp"] }
 emojis = "0.7.0"
 rsa ={ version= "0.9.8", features = ["sha2"]}
 apalis = { version = "0.7", features = ["timeout","limit"] } # Limit for concurrency

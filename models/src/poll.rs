@@ -11,7 +11,7 @@ diesel::table! {
 		multiple -> Bool,
 		choices -> Array<VarChar>,
 		votes -> Array<Int4>,
-		noteVisibility -> crate::models::note::NoteVisibilityType,
+		noteVisibility -> crate::note::NoteVisibilityType,
 		userId -> VarChar,
 		userHost -> Nullable<VarChar>,
 		channelId -> Nullable<VarChar>,

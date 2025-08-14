@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use strum_macros::{Display, EnumString};
 
-use crate::{DBConnection, models::common::UserSearchableBy};
+use crate::{DBConnection, common::UserSearchableBy};
 
 //TODO テーブル分割したい(32制限に収めたい)
 diesel::table! {
@@ -44,7 +44,7 @@ diesel::table! {
 		isRoot -> Bool,
 		isExplorable -> Bool,
 		isIndexable -> Bool,
-		searchableBy -> Nullable<crate::models::common::UserSearchableType>,
+		searchableBy -> Nullable<crate::common::UserSearchableType>,
 		requireSigninToViewContents -> Bool,
 		makeNotesFollowersOnlyBefore -> Nullable<Int4>,
 		makeNotesHiddenBefore -> Nullable<Int4>,

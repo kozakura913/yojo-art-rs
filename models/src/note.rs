@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet};
 use strum_macros::{Display, EnumString};
 use yojo_art_utils::{PgEnum, PgJson, PgString};
 
-use crate::{DBConnection, models::common::NoteSearchableBy};
+use crate::{DBConnection, common::NoteSearchableBy};
 use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
 use diesel_async::RunQueryDsl;
 
@@ -40,8 +40,8 @@ diesel::table! {
 		repliesCount -> SmallInt,
 		clippedCount -> SmallInt,
 		reactions -> Jsonb,
-		visibility -> crate::models::note::NoteVisibilityType,
-		searchableBy -> Nullable<crate::models::common::NoteSearchableType>,
+		visibility -> crate::note::NoteVisibilityType,
+		searchableBy -> Nullable<crate::common::NoteSearchableType>,
 		uri -> Nullable<VarChar>,
 		url -> Nullable<VarChar>,
 		fileIds -> Array<VarChar>,

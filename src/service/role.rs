@@ -307,17 +307,3 @@ impl Into<HashMap<String, Policy>> for RolePolicies {
 		policies
 	}
 }
-impl MiRole {
-	/*
-	pub fn list_policy_keys(&self)->Option<Vec<String>>{
-		Some(self.policies.as_object()?.iter().map(|v|v.0.clone()).collect())
-	}
-	/** parse失敗したやつはリストから除外される*/
-	pub fn list_policies(&self)->Option<Vec<(String,Policy)>>{
-		Some(self.policies.as_object()?.iter().filter_map(|v|serde_json::from_value(v.1.clone()).ok().map(|j|(v.0.clone(),j))).collect())
-	}
-	pub fn get_policy(&self,key:&str)->Option<Policy>{
-		serde_json::from_value(self.policies.as_object()?.get(key)?.clone()).ok()
-	}
-	*/
-}

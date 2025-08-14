@@ -32,7 +32,7 @@ diesel::table! {
 		usageInfo -> Nullable<VarChar>,
 		description -> Nullable<VarChar>,
 		author -> Nullable<VarChar>,
-		copyPermission -> Nullable<crate::models::emoji::EmojiCopyPermissionsType>,
+		copyPermission -> Nullable<crate::emoji::EmojiCopyPermissionsType>,
 		isBasedOn -> Nullable<VarChar>,
 		importFrom -> Nullable<VarChar>,
 		roleIdsThatCanBeUsedThisEmojiAsReaction -> Array<VarChar>,

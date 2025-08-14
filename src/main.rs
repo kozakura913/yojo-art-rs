@@ -9,21 +9,29 @@ use redis::aio::ConnectionManager;
 use s3::Bucket;
 use serde::{Deserialize, Serialize};
 use service::{
-	announcement::AnnouncementService, drive::DriveService, emoji::EmojiService,
-	event::EventService, fanout_timeline::FanoutTimelineService, file_meta::FileMetaService,
-	id_service::IdService, instance::InstanceService, meta::MetaService, note::NoteService,
-	role::RoleService, token_service::TokenService, user::UserService,
-};
-
-use crate::service::{
 	activitypub::{
 		deliver::APDeliverService, render::ApRenderService, signature::APSignatureService,
 	},
+	announcement::AnnouncementService,
+	drive::DriveService,
+	emoji::EmojiService,
+	event::EventService,
+	fanout_timeline::FanoutTimelineService,
+	file_meta::FileMetaService,
+	id_service::IdService,
+	instance::InstanceService,
+	meta::MetaService,
+	note::NoteService,
+	role::RoleService,
 	timeline::TimelineService,
+	token_service::TokenService,
+	user::UserService,
 };
+
+pub use yojo_art_models as models;
+pub use yojo_art_models::DBConnection;
 mod api;
 mod browsersafe;
-mod models;
 mod service;
 
 #[derive(Clone)]
@@ -485,8 +493,6 @@ impl Context {
 }
 #[derive(Clone, Debug)]
 pub struct DataBase(diesel_async::pooled_connection::bb8::Pool<AsyncPgConnection>);
-pub type DBConnection<'a> =
-	diesel_async::pooled_connection::bb8::PooledConnection<'a, AsyncPgConnection>;
 
 impl DataBase {
 	pub async fn open(database_url: &str) -> Result<Self, String> {
