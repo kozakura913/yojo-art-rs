@@ -1,25 +1,15 @@
-use std::collections::HashSet;
-
 use axum::{http::StatusCode, response::IntoResponse};
 use serde::{Deserialize, Serialize};
-use tokio::sync::RwLock;
 
 use crate::{
 	Context, ServerError,
 	models::{
 		self,
-		emoji::{EmojiCopyPermissions, MiEmoji},
-		following::MiFollowerInbox,
+		emoji::MiEmoji,
 		note::{MiNote, NoteReactionAcceptances, NoteVisibility},
 		note_reaction::MiNoteReaction,
-		user::MiUserInbox,
 	},
-	service::{
-		activitypub::{self, deliver::DeliverTarget, types::ApLike},
-		event::NoteEventType,
-		timeline::{TLOptions, TimelineHints},
-		token_service::Token,
-	},
+	service::{activitypub::deliver::DeliverTarget, event::NoteEventType, token_service::Token},
 };
 const FALLBACK: &'static str = "\u{2764}";
 const PER_NOTE_REACTION_USER_PAIR_CACHE_MAX: usize = 16;
@@ -117,32 +107,26 @@ pub async fn post(
 		use diesel_async::AsyncConnection;
 		con.transaction(|con| {
 			Box::pin(async {
-				use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
-				use diesel_async::RunQueryDsl;
+				let old_note = MiNote::load_by_id(con, &reaction.note_id).await?;
+				let mut update_reactions = old_note.reactions;
+				let mut react_count = update_reactions
+					.0
+					.get(&reaction.reaction)
+					.copied()
+					.unwrap_or(0);
+				react_count += 1;
+				update_reactions
+					.0
+					.insert(reaction.reaction.to_owned(), react_count);
+				let mut reaction_cache = old_note.reaction_and_user_pair_cache;
+				if reaction_cache.len() < PER_NOTE_REACTION_USER_PAIR_CACHE_MAX {
+					reaction_cache.push(format!("{}/{}", reaction.user_id, &reaction.reaction));
+				}
 				{
+					use diesel::{ExpressionMethods, QueryDsl};
+					use diesel_async::RunQueryDsl;
 					use crate::models::note::note::dsl::note;
 					use crate::models::note::note::dsl::*;
-					let old_note: MiNote = note
-						.filter(id.eq(&reaction.note_id))
-						.select(MiNote::as_select())
-						.first(con)
-						.await?;
-					let mut update_reactions = old_note.reactions;
-					println!("old update_reactions {:?}", update_reactions);
-					let mut react_count = update_reactions
-						.0
-						.get(&reaction.reaction)
-						.copied()
-						.unwrap_or(0);
-					react_count += 1;
-					update_reactions
-						.0
-						.insert(reaction.reaction.to_owned(), react_count);
-					let mut reaction_cache = old_note.reaction_and_user_pair_cache;
-					println!("old reaction_cache {:?}", reaction_cache);
-					if reaction_cache.len() < PER_NOTE_REACTION_USER_PAIR_CACHE_MAX {
-						reaction_cache.push(format!("{}/{}", reaction.user_id, &reaction.reaction));
-					}
 					diesel::update(note.filter(id.eq(&reaction.note_id)))
 						.set((
 							reactions.eq(update_reactions),
@@ -151,14 +135,7 @@ pub async fn post(
 						.execute(con)
 						.await?;
 				}
-				let new_reaction = &reaction;
-				{
-					use crate::models::note_reaction::note_reaction::dsl::note_reaction;
-					diesel::insert_into(note_reaction)
-						.values(new_reaction)
-						.execute(con)
-						.await?;
-				}
+				reaction.insert_into(con).await?;
 				diesel::result::QueryResult::Ok(())
 			})
 		})
