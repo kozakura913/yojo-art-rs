@@ -363,7 +363,8 @@ impl TimelineService {
 				.collect();
 			if !user_ids.is_empty() {
 				let append_users =
-					MiUser::load_by_ids(&mut (&self.db).get_read_only().await?, &user_ids).await?;
+					MiUser::load_by_ids(&mut (&self.db).get_read_only().await?, user_ids.iter())
+						.await?;
 				hint.user_cache
 					.extend(append_users.into_iter().map(|user| (user.id.clone(), user)));
 			}

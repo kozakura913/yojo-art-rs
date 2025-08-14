@@ -232,9 +232,6 @@ impl FanoutTimelineService {
 			}
 			merge_tl.extend_from_slice(&tl);
 		}
-		use diesel::ExpressionMethods;
-		use diesel::{QueryDsl, SelectableHelper};
-		use diesel_async::RunQueryDsl;
 
 		let mut notes: Vec<MiNote> = Vec::new();
 		let mut exclude_users = HashSet::new();
@@ -242,14 +239,8 @@ impl FanoutTimelineService {
 			let limit_tl: Vec<String> = merge_tl
 				.drain(0..merge_tl.len().min(opts.limit as usize))
 				.collect();
-			let mut append_notes: Vec<MiNote> = {
-				use crate::models::note::note::dsl::note;
-				use crate::models::note::note::dsl::*;
-				note.filter(id.eq_any(&limit_tl))
-					.select(MiNote::as_select())
-					.load(&mut self.db.get_read_only().await?)
-					.await?
-			};
+			let mut append_notes =
+				MiNote::load_by_ids(&mut self.db.get_read_only().await?, limit_tl.iter()).await?;
 			append_notes.retain(|note| opts.with_renotes || !note.is_renote() || note.is_quote());
 			let _ = self
 				.timeline_service
@@ -274,9 +265,11 @@ impl FanoutTimelineService {
 						})
 						.collect();
 					if !user_ids.is_empty() {
-						let append_users =
-							MiUser::load_by_ids(&mut self.db.get_read_only().await?, &user_ids)
-								.await?;
+						let append_users = MiUser::load_by_ids(
+							&mut self.db.get_read_only().await?,
+							user_ids.iter(),
+						)
+						.await?;
 						hints
 							.user_cache
 							.extend(append_users.into_iter().map(|user| (user.id.clone(), user)));

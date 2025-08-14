@@ -498,11 +498,7 @@ impl UserService {
 				.map_err(|e| eprintln!("{}:{} {}", file!(), line!(), e))
 				.ok()
 			{
-				let res: Option<Vec<crate::models::avatar_decoration::MiAvatarDecoration>> =
-					avatar_decoration
-						.filter(id.eq_any(&avatar_decoration_ids))
-						.select(crate::models::avatar_decoration::MiAvatarDecoration::as_select())
-						.load(&mut con)
+				let res: Option<Vec<crate::models::avatar_decoration::MiAvatarDecoration>> =crate::models::avatar_decoration::MiAvatarDecoration::load_by_ids(&mut con,avatar_decoration_ids.iter())
 						.await
 						.map_err(|e| {
 							eprintln!("{}:{} {:?}", file!(), line!(), e);

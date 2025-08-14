@@ -3,13 +3,12 @@ use diesel::{
 	ExpressionMethods, FromSqlRow, QueryDsl, Selectable, SelectableHelper,
 	deserialize::FromSql,
 	expression::AsExpression,
-	serialize::{IsNull, ToSql},
-	sql_types::{Jsonb, Nullable, VarChar},
+	serialize::ToSql,
+	sql_types::Jsonb,
 };
 use diesel_async::RunQueryDsl;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use strum_macros::{Display, EnumString};
+use yojo_art_utils::LoadByIds;
 
 use crate::{DBConnection, common::UserSearchableBy};
 
@@ -61,8 +60,9 @@ diesel::table! {
 	Selectable,
 	diesel::QueryableByName,
 	Serialize,
-	Deserialize,
+	Deserialize,LoadByIds
 )]
+#[pg_table(table_name = "user")]
 #[diesel(table_name = user)]
 pub struct MiUser {
 	pub id: String,
@@ -132,28 +132,6 @@ pub struct MiUser {
 	pub is_square_avatars: Option<bool>,
 }
 impl MiUser {
-	pub async fn load_by_id(
-		con: &mut DBConnection<'_>,
-		user_id: &str,
-	) -> Result<Self, diesel::result::Error> {
-		use self::user::dsl::user;
-		use self::user::dsl::*;
-		user.filter(id.eq(user_id))
-			.select(Self::as_select())
-			.first(con)
-			.await
-	}
-	pub async fn load_by_ids(
-		con: &mut DBConnection<'_>,
-		user_id: &Vec<String>,
-	) -> Result<Vec<Self>, diesel::result::Error> {
-		use self::user::dsl::user;
-		use self::user::dsl::*;
-		user.filter(id.eq_any(user_id))
-			.select(Self::as_select())
-			.load(con)
-			.await
-	}
 	pub async fn load_by_token(
 		con: &mut DBConnection<'_>,
 		user_token: &str,

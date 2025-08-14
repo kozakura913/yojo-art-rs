@@ -99,7 +99,7 @@ impl TokenService {
 			}
 		};
 		let token = MiAccessToken::load_by_id(&mut con, token_id).await;
-		if let Some(token) = token {
+		if let Ok(token) = token {
 			return TokenPermission::Token(token);
 		}
 		let user = MiUser::load_by_token(&mut con, token_id).await;
