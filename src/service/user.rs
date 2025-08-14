@@ -498,12 +498,16 @@ impl UserService {
 				.map_err(|e| eprintln!("{}:{} {}", file!(), line!(), e))
 				.ok()
 			{
-				let res: Option<Vec<crate::models::avatar_decoration::MiAvatarDecoration>> =crate::models::avatar_decoration::MiAvatarDecoration::load_by_ids(&mut con,avatar_decoration_ids.iter())
-						.await
-						.map_err(|e| {
-							eprintln!("{}:{} {:?}", file!(), line!(), e);
-						})
-						.ok();
+				let res: Option<Vec<crate::models::avatar_decoration::MiAvatarDecoration>> =
+					crate::models::avatar_decoration::MiAvatarDecoration::load_by_ids(
+						&mut con,
+						avatar_decoration_ids.iter(),
+					)
+					.await
+					.map_err(|e| {
+						eprintln!("{}:{} {:?}", file!(), line!(), e);
+					})
+					.ok();
 				res.map(|ad| {
 					let mut map = HashMap::new();
 					for ad in ad.into_iter() {
