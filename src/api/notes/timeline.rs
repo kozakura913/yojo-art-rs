@@ -1,8 +1,5 @@
-use std::{collections::HashMap, sync::Arc};
-
 use axum::{http::StatusCode, response::IntoResponse};
 use serde::Deserialize;
-use tokio::sync::RwLock;
 
 use crate::{
 	Context, ServerError,

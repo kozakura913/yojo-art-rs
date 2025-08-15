@@ -487,10 +487,6 @@ impl UserService {
 		}
 		let avatar_decoration_ids: Vec<String> = avatar_decoration_ids.into_iter().collect();
 		let avatar_decoration_urls = async {
-			use crate::models::avatar_decoration::avatar_decoration::dsl::avatar_decoration;
-			use crate::models::avatar_decoration::avatar_decoration::dsl::*;
-			use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
-			use diesel_async::RunQueryDsl;
 			if let Some(mut con) = self
 				.db
 				.get_read_only()
@@ -499,15 +495,15 @@ impl UserService {
 				.ok()
 			{
 				let res: Option<Vec<crate::models::avatar_decoration::MiAvatarDecoration>> =
-					avatar_decoration
-						.filter(id.eq_any(&avatar_decoration_ids))
-						.select(crate::models::avatar_decoration::MiAvatarDecoration::as_select())
-						.load(&mut con)
-						.await
-						.map_err(|e| {
-							eprintln!("{}:{} {:?}", file!(), line!(), e);
-						})
-						.ok();
+					crate::models::avatar_decoration::MiAvatarDecoration::load_by_ids(
+						&mut con,
+						avatar_decoration_ids.iter(),
+					)
+					.await
+					.map_err(|e| {
+						eprintln!("{}:{} {:?}", file!(), line!(), e);
+					})
+					.ok();
 				res.map(|ad| {
 					let mut map = HashMap::new();
 					for ad in ad.into_iter() {
@@ -551,11 +547,11 @@ impl UserService {
 			make_notes_hidden_before: user.make_notes_hidden_before,
 			instance: instance.map(|instance| PackedInstance {
 				name: instance.name,
-				softwareName: instance.softwareName,
-				softwareVersion: instance.softwareVersion,
-				iconUrl: instance.iconUrl,
-				faviconUrl: instance.faviconUrl,
-				themeColor: instance.themeColor,
+				softwareName: instance.software_name,
+				softwareVersion: instance.software_version,
+				iconUrl: instance.icon_url,
+				faviconUrl: instance.favicon_url,
+				themeColor: instance.theme_color,
 			}),
 			emojis: self
 				.emoji_service

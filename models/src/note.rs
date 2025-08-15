@@ -10,11 +10,9 @@ use serde::{Deserialize, Serialize};
 
 use std::collections::{HashMap, HashSet};
 use strum_macros::{Display, EnumString};
-use yojo_art_utils::{PgEnum, PgJson, PgString};
+use yojo_art_utils::{LoadByIds, PgEnum, PgJson, PgString};
 
-use crate::{DBConnection, common::NoteSearchableBy};
-use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
-use diesel_async::RunQueryDsl;
+use crate::common::NoteSearchableBy;
 
 diesel::table! {
 	#[sql_name = "note"]
@@ -56,8 +54,9 @@ diesel::table! {
 	}
 }
 #[derive(
-	Debug, Clone, diesel::Insertable, diesel::Queryable, Selectable, diesel::QueryableByName,
+	Debug, Clone, diesel::Insertable, diesel::Queryable, Selectable, diesel::QueryableByName,LoadByIds
 )]
+#[pg_table(table_name = "note")]
 #[diesel(table_name = note)]
 pub struct MiNote {
 	pub id: String,
@@ -218,30 +217,6 @@ pub enum NoteVisibility {
 #[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
 #[diesel(postgres_type(name = "note_visibility_enum"))]
 pub struct NoteVisibilityType;
-impl MiNote {
-	pub async fn load_by_id(
-		con: &mut DBConnection<'_>,
-		note_id: &str,
-	) -> Result<Self, diesel::result::Error> {
-		use self::note::dsl::note;
-		use self::note::dsl::*;
-		note.filter(id.eq(note_id))
-			.select(Self::as_select())
-			.first(con)
-			.await
-	}
-	pub async fn load_by_ids(
-		con: &mut DBConnection<'_>,
-		note_id: impl Iterator<Item = &String>,
-	) -> Result<Vec<Self>, diesel::result::Error> {
-		use self::note::dsl::note;
-		use self::note::dsl::*;
-		note.filter(id.eq_any(note_id))
-			.select(Self::as_select())
-			.load(con)
-			.await
-	}
-}
 /*
 	@Column('varchar', {
 		length: 1024, array: true, default: '{}',

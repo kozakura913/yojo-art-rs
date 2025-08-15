@@ -1,8 +1,6 @@
 use chrono::NaiveDateTime;
-use diesel::{ExpressionMethods, QueryDsl, Selectable, SelectableHelper};
-use diesel_async::RunQueryDsl;
-
-use crate::DBConnection;
+use diesel::Selectable;
+use yojo_art_utils::LoadByIds;
 
 diesel::table! {
 	#[sql_name = "access_token"]
@@ -22,8 +20,9 @@ diesel::table! {
 	}
 }
 #[derive(
-	Debug, Clone, diesel::Insertable, diesel::Queryable, Selectable, diesel::QueryableByName,
+	Debug, Clone, diesel::Insertable, diesel::Queryable, Selectable, diesel::QueryableByName,LoadByIds
 )]
+#[pg_table(table_name = "access_token")]
 #[diesel(table_name = access_token)]
 pub struct MiAccessToken {
 	pub id: String,
@@ -42,24 +41,4 @@ pub struct MiAccessToken {
 	pub fetched: bool,
 	#[diesel(column_name = "iconUrl")]
 	pub icon_url: Option<String>,
-}
-
-impl MiAccessToken {
-	pub async fn load_by_id(con: &mut DBConnection<'_>, token_id: &str) -> Option<Self> {
-		let mut res: MiAccessToken = {
-			use self::access_token::dsl::access_token;
-			use self::access_token::dsl::*;
-			access_token
-				.filter(token.eq(token_id))
-				.select(MiAccessToken::as_select())
-				.first(con)
-				.await
-				.map_err(|e| {
-					eprintln!("{}:{} {:?}", file!(), line!(), e);
-				})
-		}
-		.ok()?;
-		res.permission.sort();
-		Some(res)
-	}
 }

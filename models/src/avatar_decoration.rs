@@ -1,5 +1,6 @@
 use chrono::NaiveDateTime;
 use diesel::Selectable;
+use yojo_art_utils::LoadByIds;
 
 diesel::table! {
 	#[sql_name = "avatar_decoration"]
@@ -23,8 +24,9 @@ diesel::table! {
 	diesel::Insertable,
 	diesel::Queryable,
 	Selectable,
-	diesel::QueryableByName,
+	diesel::QueryableByName,LoadByIds
 )]
+#[pg_table(table_name = "avatar_decoration")]
 #[diesel(table_name = avatar_decoration)]
 pub struct MiAvatarDecoration {
 	pub id: String,

@@ -112,3 +112,52 @@ pub fn derive_pg_enum(input: proc_macro::TokenStream) -> proc_macro::TokenStream
         }
     }.into()
 }
+#[proc_macro_derive(LoadByIds, attributes(pg_table))]
+pub fn derive_load_by_id(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+	let item = parse_macro_input!(input as ItemStruct);
+	let struct_name = item.ident;
+	let table_name = item
+		.attrs
+		.iter()
+		.filter(|attr| attr.path.is_ident("pg_table"))
+		.find_map(|attr| {
+			let name_val: syn::MetaNameValue = attr.parse_args().expect(&format!("{:?}", attr));
+			if name_val.path.is_ident("table_name") {
+				Some(name_val)
+			} else {
+				None
+			}
+		})
+		.expect("table_name");
+	let s = match table_name.lit {
+		syn::Lit::Str(s) => s,
+		_ => panic!("table_name.lit"),
+	};
+	let table_name_ident = syn::Ident::new(&s.value(),proc_macro::Span::call_site().into());
+	quote! {
+		impl #struct_name {
+			pub async fn load_by_id(
+				con: &mut diesel_async::pooled_connection::bb8::PooledConnection<'_, diesel_async::AsyncPgConnection>,
+				target_id: &str,
+			) -> Result<Self, diesel::result::Error> {
+				use diesel::{SelectableHelper,ExpressionMethods, QueryDsl};
+				use diesel_async::RunQueryDsl;
+				self::#table_name_ident::dsl::#table_name_ident.filter(self::#table_name_ident::dsl::id.eq(target_id))
+					.select(Self::as_select())
+					.first(con)
+					.await
+			}
+			pub async fn load_by_ids(
+				con: &mut diesel_async::pooled_connection::bb8::PooledConnection<'_, diesel_async::AsyncPgConnection>,
+				target_ids: impl Iterator<Item = &String>,
+			) -> Result<Vec<Self>, diesel::result::Error> {
+				use diesel::{SelectableHelper,ExpressionMethods, QueryDsl};
+				use diesel_async::RunQueryDsl;
+				self::#table_name_ident::dsl::#table_name_ident.filter(self::#table_name_ident::dsl::id.eq_any(target_ids))
+					.select(Self::as_select())
+					.load(con)
+					.await
+			}
+		}
+    }.into()
+}
