@@ -12,9 +12,7 @@ use std::collections::{HashMap, HashSet};
 use strum_macros::{Display, EnumString};
 use yojo_art_utils::{LoadByIds, PgEnum, PgJson, PgString};
 
-use crate::{DBConnection, common::NoteSearchableBy};
-use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
-use diesel_async::RunQueryDsl;
+use crate::common::NoteSearchableBy;
 
 diesel::table! {
 	#[sql_name = "note"]

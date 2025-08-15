@@ -1,9 +1,9 @@
 use std::{borrow::Cow, collections::HashMap, sync::Arc, time::Duration};
 
 use memory_cache::MemoryCache;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 
-use crate::{DBConnection, DataBase, models::emoji::MiEmoji};
+use crate::{DataBase, models::emoji::MiEmoji};
 #[derive(Clone, Debug)]
 pub struct ParsedEmoji {
 	name: Option<String>,

@@ -1,15 +1,14 @@
 use chrono::NaiveDateTime;
 use diesel::{
-	ExpressionMethods, FromSqlRow, QueryDsl, Selectable, SelectableHelper,
+	FromSqlRow, Selectable,
 	deserialize::FromSql,
 	expression::AsExpression,
-	serialize::{IsNull, ToSql},
-	sql_types::{Jsonb, Nullable, VarChar},
+	serialize::ToSql,
+	sql_types::Jsonb,
 };
-use diesel_async::RunQueryDsl;
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
-use yojo_art_utils::{PgJson, PgString};
+use yojo_art_utils::PgJson;
 
 use super::note::NoteVisibility;
 

@@ -487,10 +487,6 @@ impl UserService {
 		}
 		let avatar_decoration_ids: Vec<String> = avatar_decoration_ids.into_iter().collect();
 		let avatar_decoration_urls = async {
-			use crate::models::avatar_decoration::avatar_decoration::dsl::avatar_decoration;
-			use crate::models::avatar_decoration::avatar_decoration::dsl::*;
-			use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
-			use diesel_async::RunQueryDsl;
 			if let Some(mut con) = self
 				.db
 				.get_read_only()
@@ -551,11 +547,11 @@ impl UserService {
 			make_notes_hidden_before: user.make_notes_hidden_before,
 			instance: instance.map(|instance| PackedInstance {
 				name: instance.name,
-				softwareName: instance.softwareName,
-				softwareVersion: instance.softwareVersion,
-				iconUrl: instance.iconUrl,
-				faviconUrl: instance.faviconUrl,
-				themeColor: instance.themeColor,
+				softwareName: instance.software_name,
+				softwareVersion: instance.software_version,
+				iconUrl: instance.icon_url,
+				faviconUrl: instance.favicon_url,
+				themeColor: instance.theme_color,
 			}),
 			emojis: self
 				.emoji_service

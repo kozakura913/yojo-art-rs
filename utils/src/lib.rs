@@ -137,7 +137,7 @@ pub fn derive_load_by_id(input: proc_macro::TokenStream) -> proc_macro::TokenStr
 	quote! {
 		impl #struct_name {
 			pub async fn load_by_id(
-				con: &mut DBConnection<'_>,
+				con: &mut diesel_async::pooled_connection::bb8::PooledConnection<'_, diesel_async::AsyncPgConnection>,
 				target_id: &str,
 			) -> Result<Self, diesel::result::Error> {
 				use diesel::{SelectableHelper,ExpressionMethods, QueryDsl};
@@ -148,7 +148,7 @@ pub fn derive_load_by_id(input: proc_macro::TokenStream) -> proc_macro::TokenStr
 					.await
 			}
 			pub async fn load_by_ids(
-				con: &mut DBConnection<'_>,
+				con: &mut diesel_async::pooled_connection::bb8::PooledConnection<'_, diesel_async::AsyncPgConnection>,
 				target_ids: impl Iterator<Item = &String>,
 			) -> Result<Vec<Self>, diesel::result::Error> {
 				use diesel::{SelectableHelper,ExpressionMethods, QueryDsl};

@@ -2,8 +2,6 @@ use chrono::NaiveDateTime;
 use diesel::Selectable;
 use yojo_art_utils::LoadByIds;
 
-use crate::DBConnection;
-
 diesel::table! {
 	#[sql_name = "access_token"]
 	access_token (id) {

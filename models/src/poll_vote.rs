@@ -1,7 +1,4 @@
-use chrono::NaiveDateTime;
 use diesel::Selectable;
-
-use super::note::NoteVisibility;
 
 diesel::table! {
 	#[sql_name = "poll_vote"]

@@ -1,10 +1,10 @@
 use chrono::NaiveDateTime;
 use diesel::{
-	FromSqlRow, QueryDsl, Selectable,
+	FromSqlRow, Selectable,
 	deserialize::FromSql,
 	expression::AsExpression,
 	serialize::ToSql,
-	sql_types::{Jsonb, Nullable, VarChar},
+	sql_types::VarChar,
 };
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
@@ -78,61 +78,61 @@ pub struct MiInstance {
 	 * このインスタンスのユーザーからフォローされている、自インスタンスのユーザーの数
 	 */
 	#[diesel(column_name = "followingCount")]
-	pub followingCount: i32,
+	pub following_count: i32,
 	/**
 	 * このインスタンスのユーザーをフォローしている、自インスタンスのユーザーの数
 	 */
 	#[diesel(column_name = "followersCount")]
-	pub followersCount: i32,
+	pub followers_count: i32,
 	/**
 	 * 直近のリクエスト受信日時
 	 */
 	#[diesel(column_name = "latestRequestReceivedAt")]
-	pub latestRequestReceivedAt: Option<NaiveDateTime>,
+	pub latest_request_received_at: Option<NaiveDateTime>,
 	/**
 	 * このインスタンスと不通かどうか
 	 */
 	#[diesel(column_name = "isNotResponding")]
-	pub isNotResponding: bool,
+	pub is_not_responding: bool,
 	/**
 	 * このインスタンスと不通になった日時
 	 */
 	#[diesel(column_name = "notRespondingSince")]
-	pub notRespondingSince: Option<NaiveDateTime>,
+	pub not_responding_since: Option<NaiveDateTime>,
 	/**
 	 * このインスタンスへの配信状態
 	 */
 	#[diesel(column_name = "suspensionState")]
-	pub suspensionState: SuspensionState,
+	pub suspension_state: SuspensionState,
 	#[diesel(column_name = "softwareName")]
-	pub softwareName: Option<String>,
+	pub software_name: Option<String>,
 	#[diesel(column_name = "softwareVersion")]
-	pub softwareVersion: Option<String>,
+	pub software_version: Option<String>,
 	#[diesel(column_name = "openRegistrations")]
-	pub openRegistrations: Option<bool>,
+	pub open_registrations: Option<bool>,
 	pub name: Option<String>,
 	pub description: Option<String>,
 	#[diesel(column_name = "maintainerName")]
-	pub maintainerName: Option<String>,
+	pub maintainer_name: Option<String>,
 	#[diesel(column_name = "maintainerEmail")]
-	pub maintainerEmail: Option<String>,
+	pub maintainer_email: Option<String>,
 	#[diesel(column_name = "iconUrl")]
-	pub iconUrl: Option<String>,
+	pub icon_url: Option<String>,
 	#[diesel(column_name = "faviconUrl")]
-	pub faviconUrl: Option<String>,
+	pub favicon_url: Option<String>,
 	#[diesel(column_name = "themeColor")]
-	pub themeColor: Option<String>,
+	pub theme_color: Option<String>,
 	#[diesel(column_name = "infoUpdatedAt")]
-	pub infoUpdatedAt: Option<NaiveDateTime>,
+	pub info_updated_at: Option<NaiveDateTime>,
 	#[diesel(column_name = "moderationNote")]
-	pub moderationNote: String,
+	pub moderation_note: String,
 	#[diesel(column_name = "reversiVersion")]
-	pub reversiVersion: Option<String>,
+	pub reversi_version: Option<String>,
 	/**
 	 * このインスタンスへの配送制限
 	 */
 	#[diesel(column_name = "quarantineLimited")]
-	pub quarantineLimited: bool,
+	pub quarantine_limited: bool,
 }
 #[derive(
 	Copy,
