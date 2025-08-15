@@ -123,10 +123,10 @@ pub async fn post(
 					reaction_cache.push(format!("{}/{}", reaction.user_id, &reaction.reaction));
 				}
 				{
-					use diesel::{ExpressionMethods, QueryDsl};
-					use diesel_async::RunQueryDsl;
 					use crate::models::note::note::dsl::note;
 					use crate::models::note::note::dsl::*;
+					use diesel::{ExpressionMethods, QueryDsl};
+					use diesel_async::RunQueryDsl;
 					diesel::update(note.filter(id.eq(&reaction.note_id)))
 						.set((
 							reactions.eq(update_reactions),

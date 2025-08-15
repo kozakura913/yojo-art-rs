@@ -4,11 +4,14 @@ use diesel::{
 	deserialize::FromSql,
 	expression::AsExpression,
 	serialize::ToSql,
-	sql_types::VarChar,
 };
+use diesel::ExpressionMethods;
+use diesel::QueryDsl;
+use diesel::SelectableHelper;
+use diesel_async::RunQueryDsl;
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
-use yojo_art_utils::{PgEnum, PgString};
+use yojo_art_utils::PgEnum;
 
 use crate::DBConnection;
 
