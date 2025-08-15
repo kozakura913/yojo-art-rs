@@ -33,6 +33,8 @@ ENV LD_LIBRARY_PATH=/dav1d/lib
 COPY assets ./assets
 COPY utils/src ./utils/src
 COPY utils/Cargo.toml ./utils/Cargo.toml
+COPY models/src ./models/src
+COPY models/Cargo.toml ./models/Cargo.toml
 COPY src ./src
 COPY Cargo.toml ./Cargo.toml
 RUN --mount=type=cache,target=/var/cache/cargo --mount=type=cache,target=/app/target bash /app/crossfiles/build.sh
