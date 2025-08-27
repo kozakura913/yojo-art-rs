@@ -39,4 +39,22 @@ impl MiNoteReaction{
 			.await?;
 		Ok(())
 	}
+	pub async fn load_by_user_note(con:&mut DBConnection<'_>,user_id:&str,note_id:&str)->Result<Vec<Self>,crate::Error>{
+		use self::note_reaction::dsl::note_reaction;
+		use self::note_reaction::dsl::*;
+		use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
+		use diesel_async::RunQueryDsl;
+		note_reaction
+			.filter(userId.eq(user_id))
+			.filter(noteId.eq(note_id))
+			.select(Self::as_select())
+			.load(
+				con,
+			)
+			.await
+			.map_err(|e| {
+				eprintln!("{}:{} {:?}", file!(), line!(), e);
+				e
+			})
+	}
 }

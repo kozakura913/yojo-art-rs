@@ -92,22 +92,8 @@ impl APDeliverService {
 					}
 				}
 				DeliverTarget::Follower => {
-					let res: Vec<MiFollowerInbox> = {
-						use crate::models::following::following::dsl::following;
-						use crate::models::following::following::dsl::*;
-						use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
-						use diesel_async::RunQueryDsl;
-						following
-							.filter(followerHost.is_not_null())
-							.filter(followeeId.eq(&me_id))
-							.select(MiFollowerInbox::as_select())
-							.load(&mut dbcon)
-							.await
-							.map_err(|e| {
-								eprintln!("{}:{} {:?}", file!(), line!(), e);
-								e
-							})
-					}?;
+					let res: Vec<MiFollowerInbox> =
+						MiFollowerInbox::load(&mut dbcon, &me_id).await?;
 					for t in res {
 						if let Some(shared_inbox) = t.follower_shared_inbox {
 							inbox_urls.insert(shared_inbox);

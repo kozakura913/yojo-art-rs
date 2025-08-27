@@ -100,6 +100,20 @@ pub async fn post(
 		user_id: me.clone(),
 		reaction,
 	};
+	let old_reaction = MiNoteReaction::load_by_user_note(
+		&mut ctx.raw_db.get_read_only().await?,
+		&reaction.user_id,
+		&reaction.note_id,
+	)
+	.await?;
+	if let Some(old_reaction) = old_reaction.get(0) {
+		if old_reaction.reaction == reaction.reaction {
+			return Err(ServerError::new(
+				StatusCode::BAD_REQUEST,
+				"alreadyReacted".to_owned(),
+			));
+		}
+	}
 	{
 		let db_start = chrono::Utc::now();
 		//DBに投入
@@ -107,7 +121,15 @@ pub async fn post(
 		use diesel_async::AsyncConnection;
 		con.transaction(|con| {
 			Box::pin(async {
+				println!(
+					"トランザクション開始{}ms",
+					(chrono::Utc::now() - db_start).num_milliseconds()
+				);
 				let old_note = MiNote::load_by_id(con, &reaction.note_id).await?;
+				println!(
+					"旧ノート取得{}ms",
+					(chrono::Utc::now() - db_start).num_milliseconds()
+				);
 				let mut update_reactions = old_note.reactions;
 				let mut react_count = update_reactions
 					.0
@@ -122,6 +144,10 @@ pub async fn post(
 				if reaction_cache.len() < PER_NOTE_REACTION_USER_PAIR_CACHE_MAX {
 					reaction_cache.push(format!("{}/{}", reaction.user_id, &reaction.reaction));
 				}
+				println!(
+					"差分生成{}ms",
+					(chrono::Utc::now() - db_start).num_milliseconds()
+				);
 				{
 					use crate::models::note::note::dsl::note;
 					use crate::models::note::note::dsl::*;
@@ -135,7 +161,15 @@ pub async fn post(
 						.execute(con)
 						.await?;
 				}
+				println!(
+					"ノート投入{}ms",
+					(chrono::Utc::now() - db_start).num_milliseconds()
+				);
 				reaction.insert_into(con).await?;
+				println!(
+					"リアクション投入{}ms",
+					(chrono::Utc::now() - db_start).num_milliseconds()
+				);
 				diesel::result::QueryResult::Ok(())
 			})
 		})

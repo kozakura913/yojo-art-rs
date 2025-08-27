@@ -87,31 +87,15 @@ impl EmojiService {
 		let emoji = match emoji {
 			Some(cache_hit) => cache_hit,
 			None => {
-				let emoji: MiEmoji = {
-					use crate::models::emoji::emoji::dsl::emoji;
-					use crate::models::emoji::emoji::dsl::{host as dsl_host, name as dsl_name};
-					use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
-					use diesel_async::RunQueryDsl;
-					emoji
-						.filter(dsl_name.eq(&name))
-						.filter(dsl_host.eq(&host))
-						.select(MiEmoji::as_select())
-						.first(
-							&mut self
-								.db
-								.get_read_only()
-								.await
-								.map_err(|e| {
-									eprintln!("{}:{} {:?}", file!(), line!(), e);
-								})
-								.ok()?,
-						)
-						.await
-						.map_err(|e| {
-							eprintln!("{}:{} {:?}", file!(), line!(), e);
-						})
-						.ok()
-				}?;
+				let mut con = self
+					.db
+					.get_read_only()
+					.await
+					.map_err(|e| {
+						eprintln!("{}:{} {:?}", file!(), line!(), e);
+					})
+					.ok()?;
+				let emoji: MiEmoji = MiEmoji::load(&mut con, name, host).await.ok()?;
 				let mut wl = self.cache.write().await;
 				wl.insert(key, emoji.clone(), Some(Duration::from_secs(5 * 60)));
 				emoji

@@ -87,6 +87,26 @@ pub struct MiEmoji {
 	pub role_ids_that_can_be_used_this_emoji_as_reaction: Vec<String>,
 }
 
+impl MiEmoji{
+	pub async fn load(con:&mut DBConnection<'_>,name:&str,host:&str)->Result<Self,crate::Error>{
+		use self::emoji::dsl::emoji;
+		use self::emoji::dsl::{host as dsl_host, name as dsl_name};
+		use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
+		use diesel_async::RunQueryDsl;
+		emoji
+			.filter(dsl_name.eq(name))
+			.filter(dsl_host.eq(host))
+			.select(MiEmoji::as_select())
+			.first(
+				con,
+			)
+			.await
+			.map_err(|e| {
+				eprintln!("{}:{} {:?}", file!(), line!(), e);
+				e
+			})
+	}
+}
 #[derive(
 	Copy,
 	Clone,

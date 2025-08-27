@@ -4,7 +4,6 @@ use axum::{
 	http::StatusCode,
 	response::{IntoResponse, Response},
 };
-use diesel_async::AsyncPgConnection;
 use redis::aio::ConnectionManager;
 use s3::Bucket;
 use serde::{Deserialize, Serialize};
@@ -27,9 +26,9 @@ use service::{
 	token_service::TokenService,
 	user::UserService,
 };
-
 pub use yojo_art_models as models;
 pub use yojo_art_models::DBConnection;
+use yojo_art_models::DataBase;
 mod api;
 mod browsersafe;
 mod service;
@@ -489,33 +488,5 @@ impl Context {
 			}
 		};
 		session
-	}
-}
-#[derive(Clone, Debug)]
-pub struct DataBase(diesel_async::pooled_connection::bb8::Pool<AsyncPgConnection>);
-
-impl DataBase {
-	pub async fn open(database_url: &str) -> Result<Self, String> {
-		let config = diesel_async::pooled_connection::AsyncDieselConnectionManager::<
-			AsyncPgConnection,
-		>::new(database_url);
-		let pool = match diesel_async::pooled_connection::bb8::Pool::builder()
-			.build(config)
-			.await
-		{
-			Ok(p) => p,
-			Err(e) => return Err(e.to_string()),
-		};
-		Ok(Self(pool))
-	}
-	pub async fn get_writeable(
-		&self,
-	) -> Result<DBConnection, diesel_async::pooled_connection::bb8::RunError> {
-		self.0.get().await
-	}
-	pub async fn get_read_only(
-		&self,
-	) -> Result<DBConnection, diesel_async::pooled_connection::bb8::RunError> {
-		self.0.get().await
 	}
 }

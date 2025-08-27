@@ -222,7 +222,7 @@ impl DriveService {
 					.get_user_policies(Some(user_id))
 					.await
 					.always_mark_nsfw,
-				MiUserProfile::load_by_user(&mut con, user_id).await,
+				MiUserProfile::load_by_user(&mut con, user_id).await.ok(),
 			),
 			None => (service::role::DEFAULT_POLICIES.always_mark_nsfw, None),
 		};

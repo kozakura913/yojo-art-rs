@@ -85,20 +85,21 @@ pub enum Visibility {
 }
 
 impl MiUserProfile {
-	pub async fn load_by_user(con: &mut DBConnection<'_>, user_id: &str) -> Option<Self> {
-		let res: MiUserProfile = {
-			use self::user_profile::dsl::user_profile;
-			use self::user_profile::dsl::*;
-			user_profile
-				.filter(userId.eq(user_id))
-				.select(MiUserProfile::as_select())
-				.first(con)
-				.await
-				.map_err(|e| {
-					eprintln!("{}:{} {:?}", file!(), line!(), e);
-				})
-		}
-		.ok()?;
-		Some(res)
+	pub async fn load_by_user(
+		con: &mut diesel_async::pooled_connection::bb8::PooledConnection<'_, diesel_async::AsyncPgConnection>,
+		user_id: &str,
+	) -> Result<Self, diesel::result::Error> {
+		use self::user_profile::dsl::user_profile;
+		use self::user_profile::dsl::*;
+		use diesel::{SelectableHelper,ExpressionMethods, QueryDsl};
+		use diesel_async::RunQueryDsl;
+		user_profile.filter(userId.eq(user_id))
+			.select(Self::as_select())
+			.first(con)
+			.await
+			.map_err(|e| {
+				eprintln!("{}:{} {:?}", file!(), line!(), e);
+				e
+			})
 	}
 }
