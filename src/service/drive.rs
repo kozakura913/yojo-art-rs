@@ -27,7 +27,7 @@ pub struct RegisterPreflightResult {
 	pub enable_sensitive_media_detection_for_videos: bool,
 	pub detected_name: String,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct DriveService {
 	config: Arc<MisskeyConfig>,
 	db: DataBase,
@@ -213,7 +213,7 @@ impl DriveService {
 		thumbnail_key: Option<&str>,
 		base_url: String,
 	) -> Option<(MiDriveFile, Option<serde_json::Value>)> {
-		let mut con = self.db.get_writeable().await?;
+		let mut con = self.db.get_writeable().await.ok()?;
 		let user_id = user.as_ref().map(|user| user.id.as_str());
 		let instance = self.meta_service.load(true).await?;
 		let (user_role_nsfw, profile) = match user_id {
@@ -222,7 +222,7 @@ impl DriveService {
 					.get_user_policies(Some(user_id))
 					.await
 					.always_mark_nsfw,
-				MiUserProfile::load_by_user(&mut con, user_id).await,
+				MiUserProfile::load_by_user(&mut con, user_id).await.ok(),
 			),
 			None => (service::role::DEFAULT_POLICIES.always_mark_nsfw, None),
 		};

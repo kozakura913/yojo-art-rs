@@ -31,8 +31,16 @@ pub async fn post(
 	axum::extract::Json(parms): axum::extract::Json<RequestParams>,
 ) -> Result<axum::response::Response, ServerError> {
 	let permission = ctx.token_service.get_permission(&parms.i).await;
-	let meta = ctx.meta_service.load(true).await.ok_or("fetch meta")?;
-	let user_id = permission.as_user_id().ok_or("token")?;
+	let meta = ServerError::map_opt(
+		ctx.meta_service.load(true).await,
+		"fetch meta",
+		"5e0c43f9-03d3-4ad1-9db6-a1d4fbc83fb0",
+	)?;
+	let user_id = ServerError::map_opt(
+		permission.as_user_id(),
+		"token",
+		"eb726f3f-cfeb-4b1c-9b88-451a5b164a56",
+	)?;
 	let opts = TLOptions {
 		since_id: parms.since_id,
 		until_id: parms.until_id,
@@ -62,7 +70,10 @@ pub async fn post(
 	Ok((
 		StatusCode::OK,
 		header,
-		serde_json::to_string(&packed_notes)?,
+		ServerError::map_err(
+			serde_json::to_string(&packed_notes),
+			"a67fe80a-da5d-4cf9-a409-180a2b4b05a0",
+		)?,
 	)
 		.into_response())
 }

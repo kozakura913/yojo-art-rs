@@ -21,6 +21,12 @@ impl IdServiceImpl for AidService {
 	fn parse(&self, id: &str) -> Option<i64> {
 		Some(i64::from_str_radix(&id[0..8], 36).ok()? + TIME2000)
 	}
+	fn parse_full(&self, id: &str) -> Option<(i64, num::BigInt)> {
+		Some((
+			self.parse(id)?,
+			super::bigint::parse_big_int36(&id[8..10]).ok()?,
+		))
+	}
 }
 impl AidService {
 	pub fn new() -> Self {

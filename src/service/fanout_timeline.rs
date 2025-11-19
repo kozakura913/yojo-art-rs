@@ -1,6 +1,6 @@
 use std::{borrow::Cow, collections::HashSet, sync::Arc};
 
-use redis::{AsyncCommands, aio::MultiplexedConnection};
+use redis::{AsyncCommands, aio::ConnectionManager};
 
 use crate::{
 	DataBase, ParsedMisskeyConfig, ServerError,
@@ -72,12 +72,12 @@ impl FanoutTimelineName<'_> {
 		}
 	}
 }
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct FanoutTimelineService {
 	config: Arc<ParsedMisskeyConfig>,
 	db: DataBase,
 	meta_service: MetaService,
-	redis_for_timelines: MultiplexedConnection,
+	redis_for_timelines: ConnectionManager,
 	timeline_service: TimelineService,
 }
 impl FanoutTimelineService {
@@ -85,7 +85,7 @@ impl FanoutTimelineService {
 		config: Arc<ParsedMisskeyConfig>,
 		db: DataBase,
 		meta_service: MetaService,
-		redis_for_timelines: MultiplexedConnection,
+		redis_for_timelines: ConnectionManager,
 		timeline_service: TimelineService,
 	) -> Self {
 		Self {
@@ -110,7 +110,11 @@ impl FanoutTimelineService {
 				hints,
 			)
 			.await?;
-		let meta = self.meta_service.load(true).await.ok_or("db meta")?;
+		let meta = ServerError::map_opt(
+			self.meta_service.load(true).await,
+			"db meta",
+			"6ac88418-51d3-4c93-af2e-f6776161bb2e",
+		)?;
 		if meta.other.enable_fanout_timeline_db_fallback
 			&& (notes.is_empty() || (!opts.allow_partial && (notes.len() <= opts.limit.into())))
 		{
@@ -144,7 +148,11 @@ impl FanoutTimelineService {
 				hints,
 			)
 			.await?;
-		let meta = self.meta_service.load(true).await.ok_or("db meta")?;
+		let meta = ServerError::map_opt(
+			self.meta_service.load(true).await,
+			"db meta",
+			"6a76ee85-1d8f-4821-bb9f-8b55cde9f06b",
+		)?;
 		if meta.other.enable_fanout_timeline_db_fallback
 			&& (notes.is_empty() || (!opts.allow_partial && (notes.len() <= opts.limit.into())))
 		{
@@ -178,7 +186,11 @@ impl FanoutTimelineService {
 				hints,
 			)
 			.await?;
-		let meta = self.meta_service.load(true).await.ok_or("db meta")?;
+		let meta = ServerError::map_opt(
+			self.meta_service.load(true).await,
+			"db meta",
+			"b04743ef-31a6-48cf-a650-8e031c533eaa",
+		)?;
 		if meta.other.enable_fanout_timeline_db_fallback
 			&& (notes.is_empty() || (!opts.allow_partial && (notes.len() <= opts.limit.into())))
 		{
@@ -208,11 +220,13 @@ impl FanoutTimelineService {
 		let ascending = opts.since_id.is_some() && opts.until_id.is_none();
 		let mut merge_tl = vec![];
 		for name in timeline.to_names(&self.config.host) {
-			let mut tl = self
-				.redis_for_timelines
-				.clone()
-				.lrange::<String, Vec<String>>(name, 0, -1)
-				.await?;
+			let mut tl = ServerError::map_err(
+				self.redis_for_timelines
+					.clone()
+					.lrange::<String, Vec<String>>(name, 0, -1)
+					.await,
+				"7c86b299-5dac-4186-a465-5f8674117989",
+			)?;
 			match (opts.since_id.as_ref(), opts.until_id.as_ref()) {
 				(Some(since_id), Some(until_id)) => {
 					tl.retain(|id| id < until_id && id > since_id);
@@ -239,8 +253,16 @@ impl FanoutTimelineService {
 			let limit_tl: Vec<String> = merge_tl
 				.drain(0..merge_tl.len().min(opts.limit as usize))
 				.collect();
+			let append_notes = MiNote::load_by_ids(
+				&mut ServerError::map_err(
+					self.db.get_read_only().await,
+					"08347d23-720e-4e8a-8612-7809976bf220",
+				)?,
+				limit_tl.iter(),
+			)
+			.await;
 			let mut append_notes =
-				MiNote::load_by_ids(&mut self.db.get_read_only().await?, limit_tl.iter()).await?;
+				ServerError::map_err(append_notes, "a3b41fd5-8324-468c-bff8-f63807ee522e")?;
 			append_notes.retain(|note| opts.with_renotes || !note.is_renote() || note.is_quote());
 			let _ = self
 				.timeline_service
@@ -266,10 +288,17 @@ impl FanoutTimelineService {
 						.collect();
 					if !user_ids.is_empty() {
 						let append_users = MiUser::load_by_ids(
-							&mut self.db.get_read_only().await?,
+							&mut ServerError::map_err(
+								self.db.get_read_only().await,
+								"d990ab96-0259-44a0-ba9d-65d665cf1ad7",
+							)?,
 							user_ids.iter(),
 						)
-						.await?;
+						.await;
+						let append_users = ServerError::map_err(
+							append_users,
+							"626d09fa-3676-4201-bcc9-ff1574e5ed52",
+						)?;
 						hints
 							.user_cache
 							.extend(append_users.into_iter().map(|user| (user.id.clone(), user)));

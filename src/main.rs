@@ -1,23 +1,37 @@
-use std::{io::Write, net::SocketAddr, sync::Arc};
+use std::{io::Write, net::SocketAddr, str::FromStr, sync::Arc};
 
 use axum::{
 	http::StatusCode,
 	response::{IntoResponse, Response},
 };
-use diesel_async::AsyncPgConnection;
-use redis::aio::MultiplexedConnection;
+pub use models::{DBConnection, DataBase};
+use redis::aio::ConnectionManager;
 use s3::Bucket;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use service::{
-	announcement::AnnouncementService, drive::DriveService, emoji::EmojiService,
-	event::EventService, fanout_timeline::FanoutTimelineService, file_meta::FileMetaService,
-	id_service::IdService, instance::InstanceService, meta::MetaService, note::NoteService,
-	role::RoleService, token_service::TokenService, user::UserService,
+	activitypub::{
+		deliver::APDeliverService, render::ApRenderService, signature::APSignatureService,
+	},
+	announcement::AnnouncementService,
+	drive::DriveService,
+	emoji::EmojiService,
+	event::EventService,
+	fanout_timeline::FanoutTimelineService,
+	file_meta::FileMetaService,
+	id_service::IdService,
+	instance::InstanceService,
+	meta::MetaService,
+	note::NoteService,
+	role::RoleService,
+	timeline::TimelineService,
+	token_service::TokenService,
+	user::UserService,
 };
-
-use crate::service::timeline::TimelineService;
+use uuid::uuid;
 pub use yojo_art_models as models;
-pub use yojo_art_models::DBConnection;
+
+use crate::service::notification::NotificationService;
 mod api;
 mod browsersafe;
 mod service;
@@ -26,26 +40,76 @@ mod service;
 pub struct ServerError {
 	status: StatusCode,
 	text: String,
+	id: uuid::Uuid,
 }
 impl IntoResponse for ServerError {
 	fn into_response(self) -> axum::response::Response {
-		(self.status, self.text).into_response()
+		let status_code = self.status.as_u16();
+		let kind = if status_code >= 400 && status_code < 500 {
+			"client"
+		} else {
+			"server"
+		};
+		(
+			self.status,
+			json!({
+				"error":{
+					"message":self.text,
+					"id":self.id.to_string(),
+					"kind":kind
+				}
+			})
+			.to_string(),
+		)
+			.into_response()
 	}
 }
 impl ServerError {
-	pub fn new(status: StatusCode, text: String) -> Self {
-		Self { status, text }
+	pub fn new(status: StatusCode, text: String, id: uuid::Uuid) -> Self {
+		Self { status, text, id }
 	}
-}
-impl<T> From<T> for ServerError
-where
-	T: std::fmt::Debug,
-{
-	fn from(value: T) -> Self {
+	pub fn id(text: impl Into<String>, id: uuid::Uuid) -> Self {
 		Self {
 			status: StatusCode::INTERNAL_SERVER_ERROR,
-			text: format!("{} {:?}", std::any::type_name::<T>(), value),
+			text: text.into(),
+			id,
 		}
+	}
+	pub fn err(e: impl std::error::Error, id: uuid::Uuid) -> Self {
+		Self {
+			status: StatusCode::INTERNAL_SERVER_ERROR,
+			text: format!("{:?}", e),
+			id,
+		}
+	}
+	pub fn map_err<T, E: std::fmt::Debug>(e: Result<T, E>, id: &'static str) -> Result<T, Self> {
+		match e {
+			Ok(v) => Ok(v),
+			Err(e) => Err(Self {
+				status: StatusCode::INTERNAL_SERVER_ERROR,
+				text: format!("{:?}", e),
+				id: uuid::Uuid::from_str(id).unwrap(),
+			}),
+		}
+	}
+	pub fn map_opt<T>(
+		e: Option<T>,
+		message: impl Into<String>,
+		id: &'static str,
+	) -> Result<T, Self> {
+		match e {
+			Some(v) => Ok(v),
+			None => Err(Self {
+				status: StatusCode::INTERNAL_SERVER_ERROR,
+				text: message.into(),
+				id: uuid::Uuid::from_str(id).unwrap(),
+			}),
+		}
+	}
+}
+impl From<(&'static str, &'static str)> for ServerError {
+	fn from(value: (&'static str, &'static str)) -> Self {
+		Self::id(value.0, uuid::Uuid::from_str(value.1).unwrap())
 	}
 }
 
@@ -82,6 +146,10 @@ pub struct MisskeyConfig {
 	redis_for_pubsub: Option<RedisConfig>,
 	#[serde(rename = "redisForTimelines")]
 	redis_for_timelines: Option<RedisConfig>,
+	#[serde(rename = "redisForJobQueue")]
+	redis_for_job_queue: Option<RedisConfig>,
+	#[serde(rename = "perUserNotificationsMaxCount")]
+	per_user_notifications_max_count: Option<i32>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ParsedMisskeyConfig {
@@ -92,6 +160,7 @@ pub struct ParsedMisskeyConfig {
 	remote_proxy: Option<String>,
 	ap_file_base_url: Option<String>,
 	host: String,
+	per_user_notifications_max_count: i32,
 }
 impl From<MisskeyConfig> for ParsedMisskeyConfig {
 	fn from(f: MisskeyConfig) -> Self {
@@ -106,6 +175,7 @@ impl From<MisskeyConfig> for ParsedMisskeyConfig {
 			remote_proxy: f.remote_proxy,
 			ap_file_base_url: f.ap_file_base_url,
 			host,
+			per_user_notifications_max_count: f.per_user_notifications_max_count.unwrap_or(500),
 		}
 	}
 }
@@ -139,11 +209,11 @@ impl DBConfig {
 		format!("postgres://{user}:{pass}@{host}:{port}/{db}")
 	}
 }
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Context {
 	config: Arc<ConfigFile>,
 	pub misskey_config: Arc<ParsedMisskeyConfig>,
-	pub redis: MultiplexedConnection,
+	pub redis: ConnectionManager,
 	client: reqwest::Client,
 	pub token_service: TokenService,
 	pub role_service: RoleService,
@@ -156,6 +226,11 @@ pub struct Context {
 	pub timeline_service: TimelineService,
 	pub fanout_timeline_service: FanoutTimelineService,
 	pub note_service: NoteService,
+	pub emoji_service: EmojiService,
+	pub id_service: IdService,
+	pub deliver_service: APDeliverService,
+	pub ap_render_service: ApRenderService,
+	pub notification_service: NotificationService,
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 enum FilterType {
@@ -235,8 +310,11 @@ fn main() {
 			.write_all(default_config.as_bytes())
 			.unwrap();
 	}
-	let misskey_config: MisskeyConfig =
+	let mut misskey_config: MisskeyConfig =
 		serde_yaml::from_reader(std::fs::File::open(&".config/default.yml").unwrap()).unwrap();
+	if !misskey_config.url.ends_with("/") {
+		misskey_config.url += "/";
+	}
 	let parsed_misskey_config: ParsedMisskeyConfig = misskey_config.clone().into();
 	let misskey_config = Arc::new(misskey_config);
 	let parsed_misskey_config = Arc::new(parsed_misskey_config);
@@ -253,26 +331,34 @@ fn main() {
 		.redis_for_timelines
 		.as_ref()
 		.map(|redis_for_timelines| redis::Client::open(redis_for_timelines.to_url()).unwrap());
+	let redis_for_job_queue = misskey_config
+		.redis_for_job_queue
+		.as_ref()
+		.map(|redis_for_job_queue| redis::Client::open(redis_for_job_queue.to_url()).unwrap());
 	let rt = tokio::runtime::Builder::new_multi_thread()
 		.enable_all()
 		.build()
 		.unwrap();
 	rt.block_on(async {
-		let redis = redis
-			.get_multiplexed_tokio_connection()
+		let redis = redis::aio::ConnectionManager::new(redis)
 			.await
 			.map_err(|e| println!("{:?}", e))
 			.unwrap();
 		let redis_for_pubsub = match redis_for_pubsub {
-			Some(redis_for_pubsub) => redis_for_pubsub
-				.get_multiplexed_tokio_connection()
+			Some(redis_for_pubsub) => redis::aio::ConnectionManager::new(redis_for_pubsub)
 				.await
 				.ok(),
 			None => None,
 		};
 		let redis_for_timelines = match redis_for_timelines {
-			Some(redis_for_timelines) => redis_for_timelines
-				.get_multiplexed_tokio_connection()
+			Some(redis_for_timelines) => redis::aio::ConnectionManager::new(redis_for_timelines)
+				.await
+				.ok(),
+			None => None,
+		}
+		.unwrap_or(redis.clone());
+		let redis_for_job_queue = match redis_for_job_queue {
+			Some(redis_for_job_queue) => redis::aio::ConnectionManager::new(redis_for_job_queue)
 				.await
 				.ok(),
 			None => None,
@@ -299,7 +385,7 @@ fn main() {
 		);
 		let event_service = EventService::new(
 			redis_for_pubsub.clone().unwrap_or(redis.clone()),
-			misskey_config.clone(),
+			parsed_misskey_config.clone(),
 		);
 		let drive_service = DriveService::new(
 			misskey_config.clone(),
@@ -321,7 +407,7 @@ fn main() {
 			emoji_service.clone(),
 			event_service.clone(),
 		);
-		let timeline_service = TimelineService::new(db.clone());
+		let timeline_service = TimelineService::new(db.clone(), user_service.clone());
 		let fanout_timeline_service = FanoutTimelineService::new(
 			parsed_misskey_config.clone(),
 			db.clone(),
@@ -329,7 +415,21 @@ fn main() {
 			redis_for_timelines,
 			timeline_service.clone(),
 		);
+		let notification_service = NotificationService::new(
+			db.clone(),
+			redis.clone(),
+			parsed_misskey_config.clone(),
+			id_service.clone(),
+			user_service.clone(),
+			event_service.clone(),
+			note_service.clone(),
+		);
 		let client = reqwest::Client::new();
+		let ap_signature_service =
+			APSignatureService::new(db.clone(), client.clone(), parsed_misskey_config.clone());
+		let deliver_service =
+			APDeliverService::new(ap_signature_service, db.clone(), redis_for_job_queue).await;
+		let ap_render_service = ApRenderService::new(misskey_config.clone());
 
 		let arg_tup = Context {
 			config,
@@ -347,6 +447,11 @@ fn main() {
 			note_service,
 			timeline_service,
 			fanout_timeline_service,
+			emoji_service,
+			id_service,
+			deliver_service,
+			ap_render_service,
+			notification_service,
 		};
 		let http_addr: SocketAddr = arg_tup.config.bind_addr.parse().unwrap();
 		let app = api::endpoints::route(&arg_tup);
@@ -451,37 +556,5 @@ impl Context {
 			}
 		};
 		session
-	}
-}
-#[derive(Clone, Debug)]
-pub struct DataBase(diesel_async::pooled_connection::bb8::Pool<AsyncPgConnection>);
-
-impl DataBase {
-	pub async fn open(database_url: &str) -> Result<Self, String> {
-		let config = diesel_async::pooled_connection::AsyncDieselConnectionManager::<
-			AsyncPgConnection,
-		>::new(database_url);
-		let pool = match diesel_async::pooled_connection::bb8::Pool::builder()
-			.build(config)
-			.await
-		{
-			Ok(p) => p,
-			Err(e) => return Err(e.to_string()),
-		};
-		Ok(Self(pool))
-	}
-	pub async fn get_writeable(&self) -> Option<DBConnection> {
-		match self.0.get().await {
-			Ok(c) => Some(c),
-			Err(e) => {
-				eprintln!("DB Error {:?}", e);
-				None
-			}
-		}
-	}
-	pub async fn get_read_only(
-		&self,
-	) -> Result<DBConnection, diesel_async::pooled_connection::bb8::RunError> {
-		self.0.get().await
 	}
 }

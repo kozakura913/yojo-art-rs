@@ -4,11 +4,16 @@ use diesel::{
 	deserialize::FromSql,
 	expression::AsExpression,
 	serialize::ToSql,
-	sql_types::VarChar,
 };
+use diesel::ExpressionMethods;
+use diesel::QueryDsl;
+use diesel::SelectableHelper;
+use diesel_async::RunQueryDsl;
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
-use yojo_art_utils::PgString;
+use yojo_art_utils::PgEnum;
+
+use crate::DBConnection;
 
 diesel::table! {
 	#[sql_name = "emoji"]
@@ -29,7 +34,7 @@ diesel::table! {
 		usageInfo -> Nullable<VarChar>,
 		description -> Nullable<VarChar>,
 		author -> Nullable<VarChar>,
-		copyPermission -> Nullable<VarChar>,
+		copyPermission -> Nullable<crate::emoji::EmojiCopyPermissionsType>,
 		isBasedOn -> Nullable<VarChar>,
 		importFrom -> Nullable<VarChar>,
 		roleIdsThatCanBeUsedThisEmojiAsReaction -> Array<VarChar>,
@@ -81,6 +86,27 @@ pub struct MiEmoji {
 	#[diesel(column_name = "roleIdsThatCanBeUsedThisEmojiAsReaction")]
 	pub role_ids_that_can_be_used_this_emoji_as_reaction: Vec<String>,
 }
+
+impl MiEmoji{
+	pub async fn load(con:&mut DBConnection<'_>,name:&str,host:&str)->Result<Self,crate::Error>{
+		use self::emoji::dsl::emoji;
+		use self::emoji::dsl::{host as dsl_host, name as dsl_name};
+		use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
+		use diesel_async::RunQueryDsl;
+		emoji
+			.filter(dsl_name.eq(name))
+			.filter(dsl_host.eq(host))
+			.select(MiEmoji::as_select())
+			.first(
+				con,
+			)
+			.await
+			.map_err(|e| {
+				eprintln!("{}:{} {:?}", file!(), line!(), e);
+				e
+			})
+	}
+}
 #[derive(
 	Copy,
 	Clone,
@@ -94,9 +120,10 @@ pub struct MiEmoji {
 	AsExpression,
 	Serialize,
 	Deserialize,
-	PgString,
+	PgEnum,
 )]
-#[diesel(sql_type = VarChar)]
+#[diesel(sql_type = EmojiCopyPermissionsType)]
+#[pg_type(sql_type = "EmojiCopyPermissionsType")]
 pub enum EmojiCopyPermissions {
 	#[default]
 	#[strum(serialize = "allow")]
@@ -108,4 +135,37 @@ pub enum EmojiCopyPermissions {
 	#[strum(serialize = "conditional")]
 	#[serde(rename = "conditional")]
 	Conditional,
+}
+#[derive(diesel::query_builder::QueryId, Clone, diesel::sql_types::SqlType)]
+#[diesel(postgres_type(name = "emoji_copypermission_enum"))]
+pub struct EmojiCopyPermissionsType;
+
+impl MiEmoji {
+	pub async fn load_local_emoji(
+		con: &mut DBConnection<'_>,
+		emoji_name: &str,
+	) -> Result<Self, diesel::result::Error> {
+		use self::emoji::dsl::emoji;
+		use self::emoji::dsl::*;
+		emoji
+			.filter(name.eq(emoji_name))
+			.filter(host.is_null())
+			.select(Self::as_select())
+			.first(con)
+			.await
+	}
+	pub async fn load_remote_emoji(
+		con: &mut DBConnection<'_>,
+		emoji_name: &str,
+		emoji_host: &str,
+	) -> Result<Self, diesel::result::Error> {
+		use self::emoji::dsl::emoji;
+		use self::emoji::dsl::*;
+		emoji
+			.filter(name.eq(emoji_name))
+			.filter(host.eq(emoji_host))
+			.select(Self::as_select())
+			.first(con)
+			.await
+	}
 }

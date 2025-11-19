@@ -31,7 +31,11 @@ pub async fn post(
 	axum::extract::Json(parms): axum::extract::Json<RequestParams>,
 ) -> Result<axum::response::Response, ServerError> {
 	let permission = ctx.token_service.get_permission(&parms.i).await;
-	let user_id = permission.as_user_id().ok_or("token")?;
+	let user_id = ServerError::map_opt(
+		permission.as_user_id(),
+		"token",
+		"8c397ba7-fa12-49fc-bc80-0cc33ffebf06",
+	)?;
 	let policies = permission.get_policies(&ctx.role_service).await;
 	if !policies.ltl_available {
 		return Err(ServerError::new(
@@ -42,9 +46,14 @@ pub async fn post(
 				"id": "620763f4-f621-4533-ab33-0577a1a3c342",
 			})
 			.to_string(),
+			uuid::uuid!("03efd188-d196-4d90-940d-33cf2f80cc8a"),
 		));
 	}
-	let meta = ctx.meta_service.load(true).await.ok_or("fetch meta")?;
+	let meta = ServerError::map_opt(
+		ctx.meta_service.load(true).await,
+		"fetch meta",
+		"ce954765-fc22-4645-8b0a-2af2ace6a408",
+	)?;
 	let opts = TLOptions {
 		since_id: parms.since_id,
 		until_id: parms.until_id,
@@ -74,7 +83,10 @@ pub async fn post(
 	Ok((
 		StatusCode::OK,
 		header,
-		serde_json::to_string(&packed_notes)?,
+		ServerError::map_err(
+			serde_json::to_string(&packed_notes),
+			"20832088-1d5e-419c-b8b5-49ee0a89f5c5",
+		)?,
 	)
 		.into_response())
 }

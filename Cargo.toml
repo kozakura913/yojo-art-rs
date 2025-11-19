@@ -51,17 +51,21 @@ nsfw = { version = "0.2.0", default-features = false }
 blurhash = "0.2.3"
 
 # db
-diesel ={version="*", features = ["chrono","numeric","serde_json","64-column-tables"]}
-diesel-async={version="0.5.2", features = ["postgres","bb8"]}
+diesel ={version="*", features = ["chrono","numeric","serde_json","32-column-tables"]}
+diesel-async={version="0.7.4", features = ["postgres","bb8"]}
 diesel-derive-enum ={version="2.1.0", features = ["postgres"]}
 strum_macros = "0.26.4"
 strum = "0.26.3"
 bigdecimal = "*"
 
-redis = { version = "0.26", features = ["tokio-comp"] }
+redis = { version = "0.32", features = ["tokio-comp"] }
+emojis = "0.7.0"
+rsa ={ version= "0.9.8", features = ["sha2"]}
+apalis = { version = "0.7", features = ["timeout","limit"] } # Limit for concurrency
+apalis-redis = { version = "0.7" } # Use redis for persistence
 
-#[profile.dev]
-#opt-level = 1
+[profile.dev]
+opt-level = 1
 
-#[profile.dev.package."*"]
-#opt-level = 3
+[profile.dev.package."*"]
+opt-level = 3

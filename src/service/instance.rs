@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use redis::{AsyncCommands, aio::MultiplexedConnection};
+use redis::{AsyncCommands, aio::ConnectionManager};
 use serde::{Deserialize, Serialize};
 
 use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
@@ -8,13 +8,13 @@ use diesel_async::RunQueryDsl;
 
 use crate::{DBConnection, DataBase, ServerError, models::instance::MiInstance};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct InstanceService {
 	db: DataBase,
-	redis: MultiplexedConnection,
+	redis: ConnectionManager,
 }
 impl InstanceService {
-	pub fn new(db: DataBase, redis: MultiplexedConnection) -> Self {
+	pub fn new(db: DataBase, redis: ConnectionManager) -> Self {
 		Self { db, redis }
 	}
 	pub async fn fetch(&self, host: impl AsRef<str>) -> Result<MiInstance, ServerError> {
@@ -32,15 +32,21 @@ impl InstanceService {
 		}
 
 		let res: MiInstance = {
-			let mut con = self.db.get_read_only().await?;
+			let mut con = ServerError::map_err(
+				self.db.get_read_only().await,
+				"1f4deab1-b324-40df-8ccc-bd48cc56aafc",
+			)?;
 			use crate::models::instance::instance::dsl::instance;
 			use crate::models::instance::instance::dsl::*;
-			instance
-				.filter(host.eq(host_name))
-				.select(MiInstance::as_select())
-				.first(&mut con)
-				.await
-		}?;
+			ServerError::map_err(
+				instance
+					.filter(host.eq(host_name))
+					.select(MiInstance::as_select())
+					.first(&mut con)
+					.await,
+				"4acee1f9-2427-4531-9739-e3a73bc3a5d7",
+			)?
+		};
 		if let Ok(json) = serde_json::to_string(&res) {
 			let redis_res = redis
 				.set_ex::<&str, String, ()>(host_name, json, 60 * 30)

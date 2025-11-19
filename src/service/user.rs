@@ -4,7 +4,7 @@ use std::{
 };
 
 use chrono::Utc;
-use redis::{AsyncCommands, aio::MultiplexedConnection};
+use redis::{AsyncCommands, aio::ConnectionManager};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -15,6 +15,7 @@ use crate::{
 		user_memo::MiUserMemo,
 		user_note_pining::MiUserNotePining,
 		user_profile::MiUserProfile,
+		user_profile::NotificationRecieveConfig,
 	},
 };
 
@@ -25,10 +26,10 @@ use super::{
 
 pub const USER_ONLINE_THRESHOLD: i64 = 1000 * 60 * 10; // 10min
 pub const USER_ACTIVE_THRESHOLD: i64 = 1000 * 60 * 60 * 24 * 3; // 3days
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct UserService {
 	config: Arc<ParsedMisskeyConfig>,
-	redis: MultiplexedConnection,
+	redis: ConnectionManager,
 	db: DataBase,
 	id_service: IdService,
 	role_service: RoleService,
@@ -75,7 +76,7 @@ pub struct UserPackOptions {
 impl UserService {
 	pub fn new(
 		config: Arc<ParsedMisskeyConfig>,
-		redis: MultiplexedConnection,
+		redis: ConnectionManager,
 		db: DataBase,
 		id_service: IdService,
 		role_service: RoleService,
@@ -115,7 +116,9 @@ impl UserService {
 			.map_err(|e| eprintln!("{}:{} {:?}", file!(), line!(), e))
 			.ok()?;
 		let profile = if is_detailed {
-			MiUserProfile::load_by_user(&mut con, user.id.as_ref()).await
+			MiUserProfile::load_by_user(&mut con, user.id.as_ref())
+				.await
+				.ok()
 		} else {
 			None
 		};
@@ -479,7 +482,11 @@ impl UserService {
 			Some(host) => Some(self.instance_service.fetch_connection(host).await?),
 			None => None,
 		};
-		let meta = self.meta_service.load(false).await.ok_or("meta")?;
+		let meta = ServerError::map_opt(
+			self.meta_service.load(true).await,
+			"meta",
+			"cb58ba09-8e00-4f4a-9587-4398aeaf3e8f",
+		)?;
 		let avatar_decorations = user.avatar_decorations.into_inner();
 		let mut avatar_decoration_ids = HashSet::new();
 		for ad in avatar_decorations.iter() {
@@ -541,7 +548,6 @@ impl UserService {
 			is_locked: user.is_locked,
 			is_bot: user.is_bot,
 			is_cat: user.is_cat,
-			is_proxy: meta.other.proxy_account_id.as_ref() == Some(&user.id),
 			require_signin_to_view_contents: user.require_signin_to_view_contents,
 			make_notes_followers_only_before: user.make_notes_followers_only_before,
 			make_notes_hidden_before: user.make_notes_hidden_before,
@@ -579,6 +585,59 @@ impl UserService {
 			OnlineStatus::unknown
 		}
 	}
+	pub async fn followings(&self, me_id: &str) -> Result<HashSet<String>, crate::models::Error> {
+		let mut con = self.db.get_read_only().await.map_err(|e| {
+			eprintln!("{}:{} {:?}", file!(), line!(), e);
+			crate::models::Error::BrokenTransactionManager
+		})?;
+		let mi_followings = crate::models::following::followings(&mut con, me_id).await?;
+		Ok(to_set(mi_followings.into_iter()))
+	}
+	pub async fn renote_muting(
+		&self,
+		me_id: &str,
+	) -> Result<HashSet<String>, crate::models::Error> {
+		let mut con = self.db.get_read_only().await.map_err(|e| {
+			eprintln!("{}:{} {:?}", file!(), line!(), e);
+			crate::models::Error::BrokenTransactionManager
+		})?;
+		let mi_renote_muting = crate::models::renote_muting::renote_muting(&mut con, me_id).await?;
+		Ok(to_set(mi_renote_muting.into_iter()))
+	}
+	pub async fn muted_instances(
+		&self,
+		me_id: &str,
+	) -> Result<HashSet<String>, crate::models::Error> {
+		let mut con = self.db.get_read_only().await.map_err(|e| {
+			eprintln!("{}:{} {:?}", file!(), line!(), e);
+			crate::models::Error::BrokenTransactionManager
+		})?;
+		let res: MiUserProfile = MiUserProfile::load_by_user(&mut con, me_id).await?;
+		Ok(to_set(res.muted_instances.into_inner().into_iter()))
+	}
+	pub async fn notification_recieve_config(
+		&self,
+		me_id: &str,
+	) -> Result<NotificationRecieveConfig, crate::models::Error> {
+		let mut con = self.db.get_read_only().await.map_err(|e| {
+			eprintln!("{}:{} {:?}", file!(), line!(), e);
+			crate::models::Error::BrokenTransactionManager
+		})?;
+		let res: MiUserProfile = MiUserProfile::load_by_user(&mut con, me_id).await?;
+		Ok(res.notification_recieve_config)
+	}
+}
+fn to_set<T>(v: impl Iterator<Item = T>) -> HashSet<T>
+where
+	T: std::hash::Hash,
+	T: PartialEq,
+	T: Eq,
+{
+	let mut s = HashSet::new();
+	for f in v {
+		s.insert(f);
+	}
+	s
 }
 pub trait PackedUser:
 	Clone + std::fmt::Debug + serde::ser::Serialize + serde::de::Deserialize<'static>
@@ -602,8 +661,6 @@ pub struct PackedUserLite {
 	pub is_bot: bool,
 	#[serde(rename = "isCat")]
 	pub is_cat: bool,
-	#[serde(rename = "isProxy")]
-	pub is_proxy: bool,
 	#[serde(rename = "requireSigninToViewContents")]
 	pub require_signin_to_view_contents: bool,
 	#[serde(rename = "makeNotesFollowersOnlyBefore")]

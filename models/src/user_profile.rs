@@ -1,13 +1,12 @@
-use crate::DBConnection;
 use diesel::pg::sql_types::Jsonb;
 use diesel::{
-	ExpressionMethods, QueryDsl, Selectable, SelectableHelper,
+	Selectable,
 	deserialize::{FromSql, FromSqlRow},
 	expression::AsExpression,
 	serialize::ToSql,
 	sql_types::VarChar,
 };
-use diesel_async::RunQueryDsl;
+use field_accessor::FieldAccessor;
 use serde::{Deserialize, Serialize};
 use strum_macros::{Display, EnumString};
 use yojo_art_utils::{PgJson, PgString};
@@ -21,6 +20,7 @@ diesel::table! {
 		followingVisibility -> VarChar,
 		followersVisibility -> VarChar,
 		mutedInstances -> Jsonb,
+		notificationRecieveConfig -> Jsonb,
 	}
 }
 #[derive(
@@ -47,6 +47,67 @@ pub struct MiUserProfile {
 	pub followers_visibility: Visibility,
 	#[diesel(column_name = "mutedInstances")]
 	pub muted_instances: MutedInstances,
+	#[diesel(column_name = "notificationRecieveConfig")]
+	pub notification_recieve_config:NotificationRecieveConfig,
+}
+
+#[derive(
+	PartialEq, Eq, Clone, Default, Debug, Serialize, Deserialize, FromSqlRow, AsExpression, PgJson,FieldAccessor,
+)]
+#[diesel(sql_type = Jsonb)]
+pub struct NotificationRecieveConfig{
+	note:Option<NotificationRecieveType>,
+	follow:Option<NotificationRecieveType>,
+	mention:Option<NotificationRecieveType>,
+	reply:Option<NotificationRecieveType>,
+	renote:Option<NotificationRecieveType>,
+	quote:Option<NotificationRecieveType>,
+	reaction:Option<NotificationRecieveType>,
+	#[serde(rename = "pollEnded")]
+	poll_ended:Option<NotificationRecieveType>,
+	#[serde(rename = "receiveFollowRequest")]
+	receive_follow_request:Option<NotificationRecieveType>,
+	#[serde(rename = "followRequestAccepted")]
+	follow_request_accepted:Option<NotificationRecieveType>,
+	#[serde(rename = "groupInvited")]
+	group_invited:Option<NotificationRecieveType>,
+	#[serde(rename = "roleAssigned")]
+	role_assigned:Option<NotificationRecieveType>,
+	#[serde(rename = "achievementEarned")]
+	achievement_earned:Option<NotificationRecieveType>,
+	#[serde(rename = "exportCompleted")]
+	export_completed:Option<NotificationRecieveType>,
+	login:Option<NotificationRecieveType>,
+	#[serde(rename = "createToken")]
+	create_token:Option<NotificationRecieveType>,
+	#[serde(rename = "scheduleNote")]
+	schedule_note:Option<NotificationRecieveType>,
+	app:Option<NotificationRecieveType>,
+	test:Option<NotificationRecieveType>,
+}
+impl NotificationRecieveConfig{
+	pub fn get_by_name(&self,name:&String)->Option<&NotificationRecieveType>{
+		self.get(name).ok().map(|t|t.as_ref()).unwrap_or_default()
+	}
+}
+#[derive(
+	PartialOrd,PartialEq, Eq, Clone, Debug, Serialize, Deserialize,
+)]
+pub enum NotificationRecieveType{
+	#[serde(rename = "all")]
+	All,
+	#[serde(rename = "never")]
+	Never,
+	#[serde(rename = "following")]
+	Following,
+	#[serde(rename = "follower")]
+	Follower,
+	#[serde(rename = "mutualFollow")]
+	MutualFollow,
+	#[serde(rename = "followingOrFollower")]
+	FollowingOrFollower,
+	#[serde(rename = "list")]
+	List(String),
 }
 
 #[derive(
@@ -85,20 +146,21 @@ pub enum Visibility {
 }
 
 impl MiUserProfile {
-	pub async fn load_by_user(con: &mut DBConnection<'_>, user_id: &str) -> Option<Self> {
-		let res: MiUserProfile = {
-			use self::user_profile::dsl::user_profile;
-			use self::user_profile::dsl::*;
-			user_profile
-				.filter(userId.eq(user_id))
-				.select(MiUserProfile::as_select())
-				.first(con)
-				.await
-				.map_err(|e| {
-					eprintln!("{}:{} {:?}", file!(), line!(), e);
-				})
-		}
-		.ok()?;
-		Some(res)
+	pub async fn load_by_user(
+		con: &mut diesel_async::pooled_connection::bb8::PooledConnection<'_, diesel_async::AsyncPgConnection>,
+		user_id: &str,
+	) -> Result<Self, diesel::result::Error> {
+		use self::user_profile::dsl::user_profile;
+		use self::user_profile::dsl::*;
+		use diesel::{SelectableHelper,ExpressionMethods, QueryDsl};
+		use diesel_async::RunQueryDsl;
+		user_profile.filter(userId.eq(user_id))
+			.select(Self::as_select())
+			.first(con)
+			.await
+			.map_err(|e| {
+				eprintln!("{}:{} {:?}", file!(), line!(), e);
+				e
+			})
 	}
 }

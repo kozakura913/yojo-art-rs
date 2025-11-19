@@ -46,10 +46,15 @@ pub async fn post(
 				"id": "45a6eb02-7695-4393-b023-dd3be9aaaefd",
 			})
 			.to_string(),
+			uuid::uuid!("590f60a3-8ab9-445e-b9c5-b12def8701b1"),
 		));
 	}
 	let user_id = permission.as_user_id();
-	let meta = ctx.meta_service.load(true).await.ok_or("fetch meta")?;
+	let meta = ServerError::map_opt(
+		ctx.meta_service.load(true).await,
+		"fetch meta",
+		"01232794-4419-4cdc-92fd-d3d896522bc7",
+	)?;
 	let opts = TLOptions {
 		since_id: parms.since_id,
 		until_id: parms.until_id,
@@ -79,7 +84,10 @@ pub async fn post(
 	Ok((
 		StatusCode::OK,
 		header,
-		serde_json::to_string(&packed_notes)?,
+		ServerError::map_err(
+			serde_json::to_string(&packed_notes),
+			"034c7b72-73bb-477a-befc-1e933e2e260c",
+		)?,
 	)
 		.into_response())
 }

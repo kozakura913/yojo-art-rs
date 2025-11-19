@@ -9,6 +9,8 @@ use diesel::{
 use strum_macros::{Display, EnumString};
 use yojo_art_utils::PgString;
 
+use crate::DBConnection;
+
 diesel::table! {
 	#[sql_name = "announcement"]
 	announcement (id) {
@@ -56,6 +58,31 @@ pub struct MiAnnouncement {
 	pub silence: bool,
 	#[diesel(column_name = "userId")]
 	pub user_id: Option<String>,
+}
+impl MiAnnouncement{
+	pub async fn get_unread_announcements(
+		con:&mut DBConnection<'_>,
+		user_id: &str,
+	) -> Result<Vec<Self>, crate::Error> {
+		use diesel::BoolExpressionMethods;
+		use self::announcement::dsl::announcement;
+		use self::announcement::dsl::*;
+		use crate::announcement_read::announcement_read;
+		use diesel::{ExpressionMethods, QueryDsl};
+		use diesel_async::RunQueryDsl;
+		let target_ids = announcement_read::dsl::announcement_read
+			.filter(announcement_read::dsl::userId.eq(user_id))
+			.select(announcement_read::dsl::announcementId);
+		let res: Vec<MiAnnouncement> = announcement
+			.filter(isActive.eq(true))
+			.filter(silence.eq(false))
+			.filter(userId.eq(user_id).or(userId.eq::<Option<String>>(None)))
+			.filter(forExistingUsers.eq(false).or(id.gt(user_id)))
+			.filter(diesel::dsl::not(id.eq_any(target_ids)))
+			.load(con)
+			.await?;
+		Ok(res)
+	}
 }
 #[derive(
 	PartialEq,

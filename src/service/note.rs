@@ -32,7 +32,7 @@ use super::{
 	role::RoleService,
 	user::{PackedUserLite, UserService},
 };
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct NoteService {
 	config: Arc<MisskeyConfig>,
 	db: DataBase,
@@ -166,7 +166,16 @@ impl NoteService {
 		let mut write_lock = note_cache.write().await;
 		let note = match note_hint.get(note_id) {
 			Some(note) => note.clone(),
-			None => MiNote::load_by_id(&mut self.db.get_read_only().await?, note_id).await?,
+			None => {
+				let mut db = ServerError::map_err(
+					self.db.get_read_only().await,
+					"f9e5780b-f837-4af3-9a49-d53bc1962ab2",
+				)?;
+				ServerError::map_err(
+					MiNote::load_by_id(&mut db, note_id).await,
+					"deae6316-d90d-40a5-adb5-efb93c540353",
+				)?
+			}
 		};
 		let packed = self.pack(note, me_id, user_cache).await?;
 		write_lock.insert(packed.id.clone(), packed.clone());
@@ -183,7 +192,15 @@ impl NoteService {
 			u
 		} else {
 			let mut w_lock = user_cache.write().await;
-			let u = MiUser::load_by_id(&mut self.db.get_read_only().await?, &note.user_id).await?;
+			let u = MiUser::load_by_id(
+				&mut ServerError::map_err(
+					self.db.get_read_only().await,
+					"b305d155-abd6-4e96-af3b-2f606c7d8124",
+				)?,
+				&note.user_id,
+			)
+			.await;
+			let u = ServerError::map_err(u, "f5a88823-29a4-4896-8da6-08b91604b137")?;
 			w_lock.insert(note.user_id.clone(), u.clone());
 			u
 		};
@@ -223,19 +240,29 @@ impl NoteService {
 				use crate::models::drive_file::drive_file::dsl::*;
 				use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
 				use diesel_async::RunQueryDsl;
-				drive_file
-					.filter(id.eq_any(&note.file_ids))
-					.select(MiDriveFile::as_select())
-					.load(&mut self.db.get_read_only().await?)
-					.await
-			}?;
+				let mut db = ServerError::map_err(
+					self.db.get_read_only().await,
+					"81956bfd-69ca-46c2-97bb-c044d0369ec3",
+				)?;
+				ServerError::map_err(
+					drive_file
+						.filter(id.eq_any(&note.file_ids))
+						.select(MiDriveFile::as_select())
+						.load(&mut db)
+						.await,
+					"441bc83e-b4c5-4715-aa84-10f203ea7b27",
+				)?
+			};
 			let mut packed_files = Vec::new();
 			for f in files.iter() {
 				let is_my_file = me_id.is_some() && f.user_id.as_ref() == me_id;
 				let packed = self
 					.drive_service
 					.pack(
-						&mut self.db.get_read_only().await?,
+						&mut ServerError::map_err(
+							self.db.get_read_only().await,
+							"90c06e3f-7492-4439-9142-5c4ddbcceba4",
+						)?,
 						f,
 						is_my_file,
 						false,
@@ -244,7 +271,11 @@ impl NoteService {
 						Some(&user),
 					)
 					.await;
-				packed_files.push(packed.ok_or("pack file")?);
+				packed_files.push(ServerError::map_opt(
+					packed,
+					"pack file",
+					"f3188708-2bfc-4ce3-80a0-eb2bd91e69be",
+				)?);
 			}
 			packed_files
 		};
@@ -281,7 +312,11 @@ impl NoteService {
 			None
 		};
 		let user = self.user_service.pack_lite(user.clone()).await?;
-		let created_at = self.id_service.parse(&note.id).ok_or("parse id")?;
+		let created_at = ServerError::map_opt(
+			self.id_service.parse(&note.id),
+			"parse id",
+			"7677d7b7-39f4-4cf5-aa61-e476024c89d6",
+		)?;
 		let my_reaction = if reaction_count < 1 || me_id.is_none() {
 			None
 		} else if reaction_count as usize <= note.reaction_and_user_pair_cache.len() {
@@ -308,13 +343,19 @@ impl NoteService {
 					use crate::models::note_reaction::note_reaction::dsl::*;
 					use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
 					use diesel_async::RunQueryDsl;
-					note_reaction
-						.filter(noteId.eq(&note.id))
-						.filter(userId.eq(&me_id.unwrap()))
-						.select(MiNoteReaction::as_select())
-						.load(&mut self.db.get_read_only().await?)
-						.await
-				}?;
+					ServerError::map_err(
+						note_reaction
+							.filter(noteId.eq(&note.id))
+							.filter(userId.eq(&me_id.unwrap()))
+							.select(MiNoteReaction::as_select())
+							.load(&mut ServerError::map_err(
+								self.db.get_read_only().await,
+								"0b0d5d1e-4c1b-4f61-98aa-17719f7b31c2",
+							)?)
+							.await,
+						"f07596b2-6c75-4bcd-98bd-f13be561d40e",
+					)?
+				};
 				let reactions: Vec<String> =
 					reactions.into_iter().map(|react| react.reaction).collect();
 				println!("my reactions from db {:?}", reactions);
@@ -493,10 +534,11 @@ impl NoteService {
 				if let Some(followers_only_before) =
 					packed_note.user.make_notes_followers_only_before
 				{
-					let created_at = self
-						.id_service
-						.parse(&packed_note.id)
-						.ok_or("parse created_at")?;
+					let created_at = ServerError::map_opt(
+						self.id_service.parse(&packed_note.id),
+						"parse created_at",
+						"eb496924-2e5d-4199-a44f-b55c8b252dfd",
+					)?;
 					if followers_only_before <= 0 {
 						if (Utc::now() - created_at).num_milliseconds()
 							> 0 - (followers_only_before as i64 * 1000)

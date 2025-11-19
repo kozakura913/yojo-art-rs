@@ -38,6 +38,12 @@ impl IdServiceImpl for UlidService {
 		}
 		Some(time)
 	}
+	fn parse_full(&self, id: &str) -> Option<(i64, num::BigInt)> {
+		Some((
+			self.parse(id)?,
+			super::bigint::parse_big_int32(&id[10..26]).ok()?,
+		))
+	}
 }
 impl UlidService {
 	pub fn new() -> Self {
