@@ -1,20 +1,38 @@
-use std::{collections::{HashMap, HashSet}, sync::{Arc, LazyLock}};
+use std::{
+	collections::{HashMap, HashSet},
+	sync::{Arc, LazyLock},
+};
 
 use crate::{
 	DataBase, ParsedMisskeyConfig, ServerError,
-	service::{event::{EventService, MainEventType}, id_service::IdService, note::{NoteService, PackedNote}, user::{PackedUserLite, UserService}},
+	service::{
+		event::{EventService, MainEventType},
+		id_service::IdService,
+		note::{NoteService, PackedNote},
+		user::{PackedUserLite, UserService},
+	},
 };
 use redis::{AsyncCommands, aio::ConnectionManager};
 use serde::Serialize;
 use tokio::sync::RwLock;
 use yojo_art_models::{note::MiNote, user::MiUser};
 
-static NOTE_REQUIRED_NOTIFICATION_TYPES: LazyLock<HashSet<&'static str>> = LazyLock::new(||{
-		let mut set=HashSet::new();
-		for x in ["note", "mention", "reply", "renote", "renote:grouped", "quote", "reaction", "reaction:grouped", "pollEnded"]{
-			set.insert(x);
-		}
-		set
+static NOTE_REQUIRED_NOTIFICATION_TYPES: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+	let mut set = HashSet::new();
+	for x in [
+		"note",
+		"mention",
+		"reply",
+		"renote",
+		"renote:grouped",
+		"quote",
+		"reaction",
+		"reaction:grouped",
+		"pollEnded",
+	] {
+		set.insert(x);
+	}
+	set
 });
 
 pub trait MiNotification: Serialize {}
@@ -44,7 +62,7 @@ pub struct NotificationService {
 	id_service: IdService,
 	user_service: UserService,
 	event_service: EventService,
-	note_service:NoteService,
+	note_service: NoteService,
 	misskey_config: Arc<ParsedMisskeyConfig>,
 }
 impl NotificationService {
@@ -55,7 +73,7 @@ impl NotificationService {
 		id_service: IdService,
 		user_service: UserService,
 		event_service: EventService,
-	note_service:NoteService,
+		note_service: NoteService,
 	) -> Self {
 		Self {
 			db,
@@ -64,7 +82,7 @@ impl NotificationService {
 			id_service,
 			event_service,
 			user_service,
-			note_service
+			note_service,
 		}
 	}
 	pub async fn create_notification(
@@ -140,7 +158,10 @@ impl NotificationService {
 		for _ in 0..5 {
 			let res: Result<String, redis::RedisError> = redis_ref
 				.xadd_maxlen(
-					format!("{}:notificationTimeline:{notifiee_user}",&self.misskey_config.host),
+					format!(
+						"{}:notificationTimeline:{notifiee_user}",
+						&self.misskey_config.host
+					),
 					redis::streams::StreamMaxlen::Approx(
 						self.misskey_config.per_user_notifications_max_count as _,
 					),
@@ -149,49 +170,78 @@ impl NotificationService {
 				)
 				.await;
 			if let Err(e) = &res {
-				eprintln!("{}:{} RedisError {:?}",file!(),line!(), e);
+				eprintln!("{}:{} RedisError {:?}", file!(), line!(), e);
 			}
 			if let Ok(id) = res {
 				redis_id = Some(id);
 				break;
 			}
 		}
-		let redis_id=ServerError::map_opt(redis_id, "notification redis", "ca3e7492-42c9-4d19-b6de-3928f9db5461")?;
+		let redis_id = ServerError::map_opt(
+			redis_id,
+			"notification redis",
+			"ca3e7492-42c9-4d19-b6de-3928f9db5461",
+		)?;
 		let packed = self.pack(&notification, notifiee_user).await?;
 
 		// Publish notification event
-		let push=self.event_service.publish_main_stream(notifiee_user, Some(MainEventType::Notification), Some(packed.clone())).await;
-		if let Err(e)=push{
-			eprintln!("{}:{} {:?}",file!(),line!(),e);
+		let push = self
+			.event_service
+			.publish_main_stream(
+				notifiee_user,
+				Some(MainEventType::Notification),
+				Some(packed.clone()),
+			)
+			.await;
+		if let Err(e) = push {
+			eprintln!("{}:{} {:?}", file!(), line!(), e);
 		}
-		let event_service=self.event_service.clone();
-		let notifiee_user=notifiee_user.clone();
-		let notification_type=notification.get("type").unwrap().as_str().unwrap().to_owned();
+		let event_service = self.event_service.clone();
+		let notifiee_user = notifiee_user.clone();
+		let notification_type = notification
+			.get("type")
+			.unwrap()
+			.as_str()
+			.unwrap()
+			.to_owned();
 		// 2秒経っても(今回作成した)通知が既読にならなかったら「未読の通知がありますよ」イベントを発行する
-		tokio::runtime::Handle::current().spawn(async move{
-			if notification_type!="test"{// テスト通知の場合は即時発行
+		tokio::runtime::Handle::current().spawn(async move {
+			if notification_type != "test" {
+				// テスト通知の場合は即時発行
 				tokio::time::sleep(tokio::time::Duration::from_secs(2000)).await;
 			}
-			let latest_read_notification_id: Result<String, redis::RedisError>=redis_ref.get(format!("latestReadNotification:${notifiee_user}")).await;
-			if let Ok(latest_read_notification_id) =latest_read_notification_id {
-				if latest_read_notification_id >= redis_id{
+			let latest_read_notification_id: Result<String, redis::RedisError> = redis_ref
+				.get(format!("latestReadNotification:${notifiee_user}"))
+				.await;
+			if let Ok(latest_read_notification_id) = latest_read_notification_id {
+				if latest_read_notification_id >= redis_id {
 					return;
 				}
 			}
-			let push=event_service.publish_main_stream(&notifiee_user, Some(MainEventType::UnreadNotification), Some(packed)).await;
-			if let Err(e)=push{
-				eprintln!("{}:{} {:?}",file!(),line!(),e);
+			let push = event_service
+				.publish_main_stream(
+					&notifiee_user,
+					Some(MainEventType::UnreadNotification),
+					Some(packed),
+				)
+				.await;
+			if let Err(e) = push {
+				eprintln!("{}:{} {:?}", file!(), line!(), e);
 			}
 			//TODO プッシュ通知
 		});
 		Ok(notification)
 	}
-	async fn pack(&self,notification:&serde_json::Value,notifiee_user:&String)->Result<serde_json::Value,ServerError>{
+	async fn pack(
+		&self,
+		notification: &serde_json::Value,
+		notifiee_user: &String,
+	) -> Result<serde_json::Value, ServerError> {
 		#[derive(Serialize)]
-		struct PackedNotification{
-			id:String,
+		struct PackedNotification {
+			id: String,
 			#[serde(rename = "createdAt")]
-			created_at:String,
+			created_at: String,
 			#[serde(rename = "type")]
 			notification_type: String,
 			#[serde(skip_serializing_if = "Option::is_none")]
@@ -204,46 +254,98 @@ impl NotificationService {
 			#[serde(skip_serializing_if = "Option::is_none")]
 			note: Option<PackedNote>,
 		}
-		let created_at=ServerError::map_opt(notification.get("createdAt"), "notification id", "fc29e788-50d3-4952-ad6e-e05a4e6eccff")?;
-		let created_at=ServerError::map_opt(created_at.as_str(), "notification id", "1945c4f3-9242-4030-926a-07a055b07a46")?;
-		let id=ServerError::map_opt(notification.get("id"), "notification id", "fc29e788-50d3-4952-ad6e-e05a4e6eccff")?;
-		let id=ServerError::map_opt(id.as_str(), "notification id", "1945c4f3-9242-4030-926a-07a055b07a46")?;
-		let notification_type=ServerError::map_opt(notification.get("type"), "notification type", "fc29e788-50d3-4952-ad6e-e05a4e6eccff")?;
-		let notification_type=ServerError::map_opt(notification_type.as_str(), "notification type", "1945c4f3-9242-4030-926a-07a055b07a46")?;
-		let user=if let Some(user_id)=notification.get("notifierId").map(|v|v.as_str()).unwrap_or_default(){
+		let created_at = ServerError::map_opt(
+			notification.get("createdAt"),
+			"notification id",
+			"fc29e788-50d3-4952-ad6e-e05a4e6eccff",
+		)?;
+		let created_at = ServerError::map_opt(
+			created_at.as_str(),
+			"notification id",
+			"1945c4f3-9242-4030-926a-07a055b07a46",
+		)?;
+		let id = ServerError::map_opt(
+			notification.get("id"),
+			"notification id",
+			"fc29e788-50d3-4952-ad6e-e05a4e6eccff",
+		)?;
+		let id = ServerError::map_opt(
+			id.as_str(),
+			"notification id",
+			"1945c4f3-9242-4030-926a-07a055b07a46",
+		)?;
+		let notification_type = ServerError::map_opt(
+			notification.get("type"),
+			"notification type",
+			"fc29e788-50d3-4952-ad6e-e05a4e6eccff",
+		)?;
+		let notification_type = ServerError::map_opt(
+			notification_type.as_str(),
+			"notification type",
+			"1945c4f3-9242-4030-926a-07a055b07a46",
+		)?;
+		let user = if let Some(user_id) = notification
+			.get("notifierId")
+			.map(|v| v.as_str())
+			.unwrap_or_default()
+		{
 			let mut db = ServerError::map_err(
 				self.db.get_read_only().await,
 				"e7d0a16b-7a1b-4cd3-b655-c1329e147987",
 			)?;
-			let note=ServerError::map_err(MiUser::load_by_id(&mut db,user_id).await,"97b10cbe-7ee9-4036-ab51-1aed1b575135")?;
+			let note = ServerError::map_err(
+				MiUser::load_by_id(&mut db, user_id).await,
+				"97b10cbe-7ee9-4036-ab51-1aed1b575135",
+			)?;
 			Some(self.user_service.pack_lite(note).await?)
-		}else {
+		} else {
 			None
 		};
-		let note=if let Some(note_id)=notification.get("noteId").map(|v|v.as_str()).unwrap_or_default()&&NOTE_REQUIRED_NOTIFICATION_TYPES.contains(notification_type) {
+		let note = if let Some(note_id) = notification
+			.get("noteId")
+			.map(|v| v.as_str())
+			.unwrap_or_default()
+			&& NOTE_REQUIRED_NOTIFICATION_TYPES.contains(notification_type)
+		{
 			let mut db = ServerError::map_err(
 				self.db.get_read_only().await,
 				"ab5d53c0-bb7c-4aa6-9779-1ad392079fd7",
 			)?;
-			let note=ServerError::map_err(MiNote::load_by_id(&mut db,note_id).await,"22120e27-c33e-4b3e-874e-9da7d9039cd8")?;
-			let user_cache= Arc::new(RwLock::new(HashMap::new()));
-			Some(self.note_service.pack(note, Some(notifiee_user),user_cache).await?)
-		}else {
+			let note = ServerError::map_err(
+				MiNote::load_by_id(&mut db, note_id).await,
+				"22120e27-c33e-4b3e-874e-9da7d9039cd8",
+			)?;
+			let user_cache = Arc::new(RwLock::new(HashMap::new()));
+			Some(
+				self.note_service
+					.pack(note, Some(notifiee_user), user_cache)
+					.await?,
+			)
+		} else {
 			None
 		};
-		ServerError::map_err(serde_json::to_value(&PackedNotification{
-			id:id.to_owned(),
-			created_at:created_at.to_owned(),
-			notification_type:notification_type.to_owned(),
-			user_id: notification.get("notifierId").map(|v|v.as_str().map(|s|s.to_string())).unwrap_or_default(),
-			user,
-			note,
-			reaction: if notification_type=="reaction"{
-				notification.get("reaction").map(|v|v.as_str().map(|s|s.to_string())).unwrap_or_default()
-			}else{
-				None
-			},
-		}), "efeaba74-2602-43ce-8fa3-306cba6014c9")
+		ServerError::map_err(
+			serde_json::to_value(&PackedNotification {
+				id: id.to_owned(),
+				created_at: created_at.to_owned(),
+				notification_type: notification_type.to_owned(),
+				user_id: notification
+					.get("notifierId")
+					.map(|v| v.as_str().map(|s| s.to_string()))
+					.unwrap_or_default(),
+				user,
+				note,
+				reaction: if notification_type == "reaction" {
+					notification
+						.get("reaction")
+						.map(|v| v.as_str().map(|s| s.to_string()))
+						.unwrap_or_default()
+				} else {
+					None
+				},
+			}),
+			"efeaba74-2602-43ce-8fa3-306cba6014c9",
+		)
 	}
 	async fn is_skip_notification(
 		&self,
@@ -317,8 +419,8 @@ impl NotificationService {
 			"parse id full",
 			"ce8f5941-f66b-4b88-94b3-b17fa03d948d",
 		)?;
-		let id=date.timestamp_micros().to_string() + "-0";// + &additional.to_string();
-		println!("to_xlist_id:{}",id);
+		let id = date.timestamp_micros().to_string() + "-0"; // + &additional.to_string();
+		println!("to_xlist_id:{}", id);
 		Ok(id)
 	}
 }
