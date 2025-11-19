@@ -75,15 +75,6 @@ services:
       test: "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"
       interval: 5s
       retries: 20
-  tunnel-minio:
-    restart: always
-    image: cloudflare/cloudflared
-    command: tunnel run
-    networks:
-      - internal_network
-      - external_network
-    env_file:
-      - .config/tunnel-minio.env
   minio-server:
     image: quay.io/minio/minio
     restart: always

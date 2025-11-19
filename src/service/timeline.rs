@@ -213,10 +213,15 @@ impl TimelineService {
 		}
 		{
 			let note_relation_note = MiNote::load_by_ids(
-				&mut self.db.get_read_only().await?,
+				&mut ServerError::map_err(
+					self.db.get_read_only().await,
+					"3b6e256f-9b5a-42c6-8ed7-e143ba2c6768",
+				)?,
 				note_relation_note_ids.into_iter(),
 			)
-			.await?;
+			.await;
+			let note_relation_note =
+				ServerError::map_err(note_relation_note, "b8a30621-a579-4e7c-8828-176e4d4f79a7")?;
 			for note in note_relation_note {
 				//TLから除外するユーザーであればユーザー情報を取得する必要はない
 				if !exclude_users.contains(&note.user_id) {
@@ -246,9 +251,15 @@ impl TimelineService {
 							.filter(blockerId.eq(me_id))
 							.filter(blockeeId.eq_any(&note_relation_user_ids))
 							.select(blockeeId)
-							.load(&mut self.db.get_read_only().await?)
-							.await?;
-						Ok(res)
+							.load(&mut ServerError::map_err(
+								self.db.get_read_only().await,
+								"c003d21c-cae6-4b70-bd2f-192421032052",
+							)?)
+							.await;
+						Ok(ServerError::map_err(
+							res,
+							"bc48abe2-997c-465e-99e9-26481bcb9406",
+						)?)
 					};
 					res
 				};
@@ -260,9 +271,15 @@ impl TimelineService {
 							.filter(muterId.eq(me_id))
 							.filter(muteeId.eq_any(&note_relation_user_ids))
 							.select(muteeId)
-							.load(&mut self.db.get_read_only().await?)
-							.await?;
-						Ok(res)
+							.load(&mut ServerError::map_err(
+								self.db.get_read_only().await,
+								"c6111bcf-15df-43ae-be12-69df4472cca3",
+							)?)
+							.await;
+						Ok(ServerError::map_err(
+							res,
+							"6ec49e3b-2a58-4756-9d41-79b3caaecd17",
+						)?)
 					};
 					res
 				};
@@ -306,9 +323,12 @@ impl TimelineService {
 			};
 			let (followings, renote_muting, muted_instances) =
 				futures_util::future::join3(f_following, f_renote_muting, f_muted_instances).await;
-			let followings = followings?;
-			let renote_muting = renote_muting?;
-			let muted_instances = muted_instances?;
+			let followings =
+				ServerError::map_err(followings, "05422657-fb9d-4d44-80ea-383268d42fcf")?;
+			let renote_muting =
+				ServerError::map_err(renote_muting, "89afed7d-d1c8-401a-a4b1-9f209c0c9a84")?;
+			let muted_instances =
+				ServerError::map_err(muted_instances, "061cca19-3903-45f0-b882-f0bbddf8101c")?;
 
 			let filter = move |note: &MiNote| {
 				if exclude_users.contains(&note.user_id) {
@@ -364,9 +384,16 @@ impl TimelineService {
 				})
 				.collect();
 			if !user_ids.is_empty() {
+				let append_users = MiUser::load_by_ids(
+					&mut ServerError::map_err(
+						(&self.db).get_read_only().await,
+						"b2df6f1e-0340-4e91-9298-61f365a05632",
+					)?,
+					user_ids.iter(),
+				)
+				.await;
 				let append_users =
-					MiUser::load_by_ids(&mut (&self.db).get_read_only().await?, user_ids.iter())
-						.await?;
+					ServerError::map_err(append_users, "35990e76-ef6c-488b-8425-c069f2ba040c")?;
 				hint.user_cache
 					.extend(append_users.into_iter().map(|user| (user.id.clone(), user)));
 			}
@@ -409,15 +436,24 @@ impl TimelineService {
 		};
 		let (following_set, muted_instances) =
 			futures_util::future::join(f_following, f_muted_instances).await;
-		let mut following = following_set?.iter().collect::<Vec<_>>();
-		let muted_instances = muted_instances?.iter().collect::<Vec<_>>();
+		let mut following =
+			ServerError::map_err(following_set, "ea227bea-dfd2-4a02-bec6-878964b036dd")?
+				.iter()
+				.collect::<Vec<_>>();
+		let muted_instances =
+			ServerError::map_err(muted_instances, "bdf5e787-041a-4233-b3df-6d45aac2ead3")?
+				.iter()
+				.collect::<Vec<_>>();
 
 		if opt.with_cats {
 			//フォローユーザーでもcatではない事が明らかな場合は除外
 			following.retain(|f| hint.user_cache.get(*f).map(|u| u.is_cat).unwrap_or(true));
 		}
 
-		let mut con = self.db.get_read_only().await?;
+		let mut con = ServerError::map_err(
+			self.db.get_read_only().await,
+			"afe9da66-6342-4f3c-a996-a6ff2998a237",
+		)?;
 		let f_muting = async {
 			use crate::models::muting::muting::dsl::muting;
 			use crate::models::muting::muting::dsl::*;
@@ -426,7 +462,7 @@ impl TimelineService {
 				.filter(muteeId.eq_any(&following))
 				.load(&mut con)
 				.await;
-			res
+			ServerError::map_err(res, "705483d4-d0cc-4291-845c-7487fc9308c2")
 		};
 		let muting = f_muting.await;
 		for m in muting?.into_iter() {
@@ -438,7 +474,10 @@ impl TimelineService {
 		}
 		let me_id = me_id.to_string();
 		following.push(&me_id); //自身をTLに含める
-		let mut con = self.db.get_read_only().await?;
+		let mut con = ServerError::map_err(
+			self.db.get_read_only().await,
+			"62151f6c-8f40-41c6-be6e-9b880b0a76ba",
+		)?;
 		let mut raw_tl: Vec<MiNote> = {
 			use crate::models::note::note::dsl::note;
 			use crate::models::note::note::dsl::*;
@@ -477,7 +516,8 @@ impl TimelineService {
 				(None, None) => q,
 			};
 			q = q.limit(opt.limit.into());
-			q.select(MiNote::as_select()).load(&mut con).await?
+			let res = q.select(MiNote::as_select()).load(&mut con).await;
+			ServerError::map_err(res, "85ab955d-1621-4489-91cd-60c7fb32ebb4")?
 		};
 		let remove_last = if let Some(note) = raw_tl.last() {
 			Some(&note.id) == opt.since_id.as_ref() || Some(&note.id) == opt.until_id.as_ref()
@@ -518,7 +558,9 @@ impl TimelineService {
 				)
 			};
 			let muted_instances = f_muted_instances.await;
-			muted_instances?.iter().collect::<Vec<_>>()
+			let muted_instances =
+				ServerError::map_err(muted_instances, "82b4a49a-3a46-4439-a039-94382a96a140")?;
+			muted_instances.iter().collect::<Vec<_>>()
 		} else {
 			Vec::new()
 		};
@@ -542,7 +584,10 @@ impl TimelineService {
 			}
 		}
 
-		let mut con = self.db.get_read_only().await?;
+		let mut con = ServerError::map_err(
+			self.db.get_read_only().await,
+			"a5fa75d1-c927-4e7e-82f3-2bf76a9dc87a",
+		)?;
 		let mut raw_tl: Vec<MiNote> = {
 			use crate::models::note::note::dsl::note;
 			use crate::models::note::note::dsl::*;
@@ -579,7 +624,8 @@ impl TimelineService {
 				(None, None) => query,
 			};
 			query = query.limit(opt.limit.into());
-			query.select(MiNote::as_select()).load(&mut con).await?
+			let res = query.select(MiNote::as_select()).load(&mut con).await;
+			ServerError::map_err(res, "1936f740-56f4-4e59-aa71-0c2f2e1612f5")?
 		};
 		let remove_last = if let Some(note) = raw_tl.last() {
 			Some(&note.id) == opt.since_id.as_ref() || Some(&note.id) == opt.until_id.as_ref()
@@ -628,15 +674,24 @@ impl TimelineService {
 		};
 		let (following_set, muted_instances) =
 			futures_util::future::join(f_following, f_muted_instances).await;
-		let mut following = following_set?.iter().collect::<Vec<_>>();
-		let muted_instances = muted_instances?.iter().collect::<Vec<_>>();
+		let mut following =
+			ServerError::map_err(following_set, "1870425a-4c07-491d-b17b-05b0e2badc74")?
+				.iter()
+				.collect::<Vec<_>>();
+		let muted_instances =
+			ServerError::map_err(muted_instances, "ddbc1dab-3985-444f-89de-236f638223aa")?
+				.iter()
+				.collect::<Vec<_>>();
 
 		if opt.with_cats {
 			//フォローユーザーでもcatではない事が明らかな場合は除外
 			following.retain(|f| hint.user_cache.get(*f).map(|u| u.is_cat).unwrap_or(true));
 		}
 
-		let mut con = self.db.get_read_only().await?;
+		let mut con = ServerError::map_err(
+			self.db.get_read_only().await,
+			"5bc761cd-4226-40b6-b6e1-7813acc19aa1",
+		)?;
 		let f_muting = async {
 			use crate::models::muting::muting::dsl::muting;
 			use crate::models::muting::muting::dsl::*;
@@ -647,8 +702,8 @@ impl TimelineService {
 				.await;
 			res
 		};
-		let muting = f_muting.await;
-		for m in muting?.into_iter() {
+		let muting = ServerError::map_err(f_muting.await, "1ad587d7-fa71-4b3c-b16a-0009041c31fb")?;
+		for m in muting.into_iter() {
 			hint.is_muting_user.insert(m.mutee_id, true);
 		}
 		following.retain(|f| !*hint.is_muting_user.get(*f).unwrap_or(&false));
@@ -657,7 +712,10 @@ impl TimelineService {
 		}
 		let me_id = me_id.to_string();
 		following.push(&me_id); //自身をTLに含める
-		let mut con = self.db.get_read_only().await?;
+		let mut con = ServerError::map_err(
+			self.db.get_read_only().await,
+			"f8420eea-3f2b-428e-a2bc-aeaaca8b2393",
+		)?;
 		let mut raw_tl: Vec<MiNote> = {
 			use crate::models::note::note::dsl::note;
 			use crate::models::note::note::dsl::*;
@@ -692,7 +750,8 @@ impl TimelineService {
 				(None, None) => q,
 			};
 			q = q.limit(opt.limit.into());
-			q.select(MiNote::as_select()).load(&mut con).await?
+			let res = q.select(MiNote::as_select()).load(&mut con).await;
+			ServerError::map_err(res, "b9c06c79-7193-42ed-acca-8de65c462a09")?
 		};
 		let remove_last = if let Some(note) = raw_tl.last() {
 			Some(&note.id) == opt.since_id.as_ref() || Some(&note.id) == opt.until_id.as_ref()

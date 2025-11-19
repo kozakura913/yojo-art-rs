@@ -40,7 +40,6 @@ diesel::table! {
 		isLocked -> Bool,
 		isBot -> Bool,
 		isCat -> Bool,
-		isRoot -> Bool,
 		isExplorable -> Bool,
 		isIndexable -> Bool,
 		searchableBy -> Nullable<crate::common::UserSearchableType>,
@@ -111,8 +110,6 @@ pub struct MiUser {
 	pub is_bot: bool,
 	#[diesel(column_name = "isCat")]
 	pub is_cat: bool,
-	#[diesel(column_name = "isRoot")]
-	pub is_root: bool,
 	#[diesel(column_name = "isExplorable")]
 	pub is_explorable: bool,
 	#[diesel(column_name = "isIndexable")]

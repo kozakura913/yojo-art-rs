@@ -1,6 +1,6 @@
 use axum::BoxError;
 use base64::Engine;
-use std::{collections::HashMap, default, str::FromStr, sync::Arc};
+use std::{str::FromStr, sync::Arc};
 
 use crate::{DataBase, ParsedMisskeyConfig, models::user_keypair::MiUserKeypair};
 
@@ -32,7 +32,6 @@ impl APSignatureService {
 			misskey_config,
 		}
 	}
-	//url="https://federation-test-temp-bettaku_engawa.penginn.net/users/01JWB93KKPB4KMB4VFEACTAJFM"
 	pub async fn get(&self, url: impl AsRef<str>, me_id: impl AsRef<str>) {
 		let date = chrono::Utc::now()
 			.format("%a, %d %b %Y %H:%M:%S %Z")

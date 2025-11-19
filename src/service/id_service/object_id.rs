@@ -17,6 +17,12 @@ impl IdServiceImpl for ObjectIdService {
 	fn parse(&self, id: &str) -> Option<i64> {
 		Some(i64::from_str_radix(&id[0..8], 16).ok()? * 1000)
 	}
+	fn parse_full(&self, id: &str) -> Option<(i64, num::BigInt)> {
+		Some((
+			self.parse(id)?,
+			super::bigint::parse_big_int16(&id[8..24]).ok()?,
+		))
+	}
 }
 impl ObjectIdService {
 	pub fn new() -> Self {

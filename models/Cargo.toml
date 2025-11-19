@@ -17,3 +17,4 @@ diesel-async={version="0.5.2", features = ["postgres","bb8"]}
 diesel-derive-enum ={version="2.1.0", features = ["postgres"]}
 strum_macros = "0.26.4"
 strum = "0.26.3"
+field_accessor = "0.5.2"

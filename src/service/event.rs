@@ -23,6 +23,10 @@ impl StreamChannels<'_> {
 pub enum MainEventType {
 	#[serde(rename = "driveFileCreated")]
 	DriveFileCreated,
+	#[serde(rename = "notification")]
+	Notification,
+	#[serde(rename = "unreadNotification")]
+	UnreadNotification,
 }
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum DriveEventType {

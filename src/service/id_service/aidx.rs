@@ -13,6 +13,7 @@ const TIME2000: i64 = 946684800000;
 const TIME_LENGTH: usize = 8;
 const NODE_LENGTH: usize = 4;
 const NOISE_LENGTH: usize = 4;
+const AIDX_LENGTH: usize = TIME_LENGTH + NODE_LENGTH + NOISE_LENGTH;
 
 #[derive(Debug)]
 pub struct AidxService {
@@ -28,6 +29,12 @@ impl IdServiceImpl for AidxService {
 	}
 	fn parse(&self, id: &str) -> Option<i64> {
 		Some(i64::from_str_radix(&id[0..TIME_LENGTH], 36).ok()? + TIME2000)
+	}
+	fn parse_full(&self, id: &str) -> Option<(i64, num::BigInt)> {
+		Some((
+			self.parse(id)?,
+			super::bigint::parse_big_int36(&id[TIME_LENGTH..AIDX_LENGTH]).ok()?,
+		))
 	}
 }
 impl AidxService {

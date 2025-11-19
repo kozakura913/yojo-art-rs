@@ -9,6 +9,7 @@ pub mod id_service;
 pub mod instance;
 pub mod meta;
 pub mod note;
+pub mod notification;
 pub mod role;
 pub mod timeline;
 pub mod token_service;

@@ -94,10 +94,13 @@ async fn check_permission(
 	let mut stream = body.into_data_stream();
 	let mut bb = Vec::new();
 	while let Some(x) = stream.next().await {
-		let b = x?;
+		let b = ServerError::map_err(x, "b7e62645-ae3b-4f8b-8ca0-108eb76c4698")?;
 		bb.extend_from_slice(&b[..]);
 	}
-	let parms: RequestParams = serde_json::from_slice(&bb)?;
+	let parms: RequestParams = ServerError::map_err(
+		serde_json::from_slice(&bb),
+		"ef1897cf-b4c8-47d5-bf58-3569a2e87c73",
+	)?;
 	let user_permissions = if let Some(i) = &parms.i {
 		ctx.token_service.get_permission(i).await
 	} else {
@@ -108,6 +111,7 @@ async fn check_permission(
 			return Err(ServerError::new(
 				axum::http::StatusCode::FORBIDDEN,
 				format!("required_permissions:{:?}", required_permissions),
+				uuid::uuid!("94be7345-c25b-42f6-9ccb-2c6171214883"),
 			));
 		}
 	}

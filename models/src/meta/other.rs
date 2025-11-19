@@ -10,7 +10,6 @@ diesel::table! {
 		id -> VarChar,
 		cacheRemoteFiles -> Bool,
 		cacheRemoteSensitiveFiles -> Bool,
-		proxyAccountId -> Nullable<VarChar>,
 		sensitiveMediaDetection -> VarChar,
 		sensitiveMediaDetectionSensitivity -> VarChar,
 		enableSensitiveMediaDetectionForVideos -> Bool,
@@ -40,8 +39,6 @@ pub struct MiMetaOther {
 	pub cache_remote_files: bool,
 	#[diesel(column_name = "cacheRemoteSensitiveFiles")]
 	pub cache_remote_sensitive_files: bool,
-	#[diesel(column_name = "proxyAccountId")]
-	pub proxy_account_id: Option<String>,
 	#[diesel(column_name = "sensitiveMediaDetection")]
 	pub sensitive_media_detection: SensitiveMediaDetection,
 	#[diesel(column_name = "sensitiveMediaDetectionSensitivity")]

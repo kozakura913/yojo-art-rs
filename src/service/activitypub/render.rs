@@ -3,7 +3,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	MisskeyConfig,
+	MisskeyConfig, ServerError,
 	models::{emoji::MiEmoji, note::MiNote, note_reaction::MiNoteReaction},
 	service::activitypub::types::{
 		ApEmoji, ApEmojiAuthor, ApImage, ApLike, ApMisskeyLicense, ApSearchableBy, FreeText,
@@ -142,10 +142,15 @@ impl ApRenderService {
 		&self,
 		json: impl Serialize,
 	) -> Result<serde_json::Value, crate::ServerError> {
-		let mut value = serde_json::to_value(json)?;
-		let value_object = value
-			.as_object_mut()
-			.ok_or("eb086837-257c-4335-8764-6ffca78d18ea")?;
+		let mut value = ServerError::map_err(
+			serde_json::to_value(json),
+			"720f2ced-39a1-4a09-81a0-1be02e6552bb",
+		)?;
+		let value_object = ServerError::map_opt(
+			value.as_object_mut(),
+			"ap",
+			"eb086837-257c-4335-8764-6ffca78d18ea",
+		)?;
 		let mut context = vec![];
 		context.push(serde_json::Value::String(
 			"https://www.w3.org/ns/activitystreams".into(),
@@ -153,58 +158,64 @@ impl ApRenderService {
 		context.push(serde_json::Value::String(
 			"https://w3id.org/security/v1".into(),
 		));
-		context.push(serde_json::to_value(ApContext {
-			key: "sec:Key",
-			manually_approves_followers: "as:manuallyApprovesFollowers",
-			sensitive: "as:sensitive",
-			hashtag: "as:Hashtag",
-			quote_url: "as:quoteUrl",
-			toot: "http://joinmastodon.org/ns#",
-			emoji: "toot:Emoji",
-			featured: "toot:featured",
-			discoverable: "toot:discoverable",
-			indexable: "toot:indexable",
-			fedibird: "http://fedibird.com/ns#",
-			searchable_by: ApSearchableBy {
-				id: "fedibird:searchableBy",
-				ap_type: "@id",
-			},
-			schema: "http://schema.org#",
-			property_value: "schema:PropertyValue",
-			value: "schema:value",
-			misskey: "https://misskey-hub.net/ns#",
-			misskey_content: "misskey:_misskey_content",
-			misskey_quote: "misskey:_misskey_quote",
-			misskey_reaction: "misskey:_misskey_reaction",
-			misskey_votes: "misskey:_misskey_votes",
-			misskey_summary: "misskey:_misskey_summary",
-			misskey_followed_message: "misskey:_misskey_followedMessage",
-			misskey_require_signin_to_view_contents: "misskey:_misskey_requireSigninToViewContents",
-			misskey_make_notes_followers_only_before: "misskey:_misskey_makeNotesFollowersOnlyBefore",
-			misskey_make_notes_hidden_before: "misskey:_misskey_makeNotesHiddenBefore",
-			misskey_license: "misskey:_misskey_license",
-			free_text: FreeText {
-				id: "misskey:freeText",
-				ap_type: "schema:text",
-			},
-			misskey_talk: "misskey:_misskey_talk",
-			is_cat: "misskey:isCat",
-			yojoart: "https://yojoart.kzkr.xyz/ns#",
-			banner: "yojoart:banner",
-			game: "yojoart:Game",
-			yojoart_clips: "yojoart:_yojoart_clips",
-			vcard: "http://www.w3.org/2006/vcard/ns#",
-		})?);
+		context.push(
+			serde_json::to_value(ApContext {
+				key: "sec:Key",
+				manually_approves_followers: "as:manuallyApprovesFollowers",
+				sensitive: "as:sensitive",
+				hashtag: "as:Hashtag",
+				quote_url: "as:quoteUrl",
+				toot: "http://joinmastodon.org/ns#",
+				emoji: "toot:Emoji",
+				featured: "toot:featured",
+				discoverable: "toot:discoverable",
+				indexable: "toot:indexable",
+				fedibird: "http://fedibird.com/ns#",
+				searchable_by: ApSearchableBy {
+					id: "fedibird:searchableBy",
+					ap_type: "@id",
+				},
+				schema: "http://schema.org#",
+				property_value: "schema:PropertyValue",
+				value: "schema:value",
+				misskey: "https://misskey-hub.net/ns#",
+				misskey_content: "misskey:_misskey_content",
+				misskey_quote: "misskey:_misskey_quote",
+				misskey_reaction: "misskey:_misskey_reaction",
+				misskey_votes: "misskey:_misskey_votes",
+				misskey_summary: "misskey:_misskey_summary",
+				misskey_followed_message: "misskey:_misskey_followedMessage",
+				misskey_require_signin_to_view_contents: "misskey:_misskey_requireSigninToViewContents",
+				misskey_make_notes_followers_only_before: "misskey:_misskey_makeNotesFollowersOnlyBefore",
+				misskey_make_notes_hidden_before: "misskey:_misskey_makeNotesHiddenBefore",
+				misskey_license: "misskey:_misskey_license",
+				free_text: FreeText {
+					id: "misskey:freeText",
+					ap_type: "schema:text",
+				},
+				misskey_talk: "misskey:_misskey_talk",
+				is_cat: "misskey:isCat",
+				yojoart: "https://yojoart.kzkr.xyz/ns#",
+				banner: "yojoart:banner",
+				game: "yojoart:Game",
+				yojoart_clips: "yojoart:_yojoart_clips",
+				vcard: "http://www.w3.org/2006/vcard/ns#",
+			})
+			.unwrap(),
+		);
 		let context = ApBody {
 			id: format!("{}/{}", self.misskey_config.url, uuid::Uuid::new_v4()),
 			context: serde_json::Value::Array(context),
 		};
-		let mut ap_context = serde_json::to_value(context)?;
-		value_object.append(
-			ap_context
-				.as_object_mut()
-				.ok_or("41f95272-631d-4893-a889-d1dea62f2cc5")?,
-		);
+		let mut ap_context = ServerError::map_err(
+			serde_json::to_value(context),
+			"2b44c26d-01f4-4045-88d0-61ffd379a44a",
+		)?;
+		value_object.append(ServerError::map_opt(
+			ap_context.as_object_mut(),
+			"ap",
+			"41f95272-631d-4893-a889-d1dea62f2cc5",
+		)?);
 		Ok(value)
 	}
 }

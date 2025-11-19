@@ -1,12 +1,14 @@
-use std::{io::Write, net::SocketAddr, sync::Arc};
+use std::{io::Write, net::SocketAddr, str::FromStr, sync::Arc};
 
 use axum::{
 	http::StatusCode,
 	response::{IntoResponse, Response},
 };
+pub use models::{DBConnection, DataBase};
 use redis::aio::ConnectionManager;
 use s3::Bucket;
 use serde::{Deserialize, Serialize};
+use serde_json::json;
 use service::{
 	activitypub::{
 		deliver::APDeliverService, render::ApRenderService, signature::APSignatureService,
@@ -26,9 +28,10 @@ use service::{
 	token_service::TokenService,
 	user::UserService,
 };
+use uuid::uuid;
 pub use yojo_art_models as models;
-pub use yojo_art_models::DBConnection;
-use yojo_art_models::DataBase;
+
+use crate::service::notification::NotificationService;
 mod api;
 mod browsersafe;
 mod service;
@@ -37,26 +40,76 @@ mod service;
 pub struct ServerError {
 	status: StatusCode,
 	text: String,
+	id: uuid::Uuid,
 }
 impl IntoResponse for ServerError {
 	fn into_response(self) -> axum::response::Response {
-		(self.status, self.text).into_response()
+		let status_code = self.status.as_u16();
+		let kind = if status_code >= 400 && status_code < 500 {
+			"client"
+		} else {
+			"server"
+		};
+		(
+			self.status,
+			json!({
+				"error":{
+					"message":self.text,
+					"id":self.id.to_string(),
+					"kind":kind
+				}
+			})
+			.to_string(),
+		)
+			.into_response()
 	}
 }
 impl ServerError {
-	pub fn new(status: StatusCode, text: String) -> Self {
-		Self { status, text }
+	pub fn new(status: StatusCode, text: String, id: uuid::Uuid) -> Self {
+		Self { status, text, id }
 	}
-}
-impl<T> From<T> for ServerError
-where
-	T: std::fmt::Debug,
-{
-	fn from(value: T) -> Self {
+	pub fn id(text: impl Into<String>, id: uuid::Uuid) -> Self {
 		Self {
 			status: StatusCode::INTERNAL_SERVER_ERROR,
-			text: format!("{} {:?}", std::any::type_name::<T>(), value),
+			text: text.into(),
+			id,
 		}
+	}
+	pub fn err(e: impl std::error::Error, id: uuid::Uuid) -> Self {
+		Self {
+			status: StatusCode::INTERNAL_SERVER_ERROR,
+			text: format!("{:?}", e),
+			id,
+		}
+	}
+	pub fn map_err<T, E: std::fmt::Debug>(e: Result<T, E>, id: &'static str) -> Result<T, Self> {
+		match e {
+			Ok(v) => Ok(v),
+			Err(e) => Err(Self {
+				status: StatusCode::INTERNAL_SERVER_ERROR,
+				text: format!("{:?}", e),
+				id: uuid::Uuid::from_str(id).unwrap(),
+			}),
+		}
+	}
+	pub fn map_opt<T>(
+		e: Option<T>,
+		message: impl Into<String>,
+		id: &'static str,
+	) -> Result<T, Self> {
+		match e {
+			Some(v) => Ok(v),
+			None => Err(Self {
+				status: StatusCode::INTERNAL_SERVER_ERROR,
+				text: message.into(),
+				id: uuid::Uuid::from_str(id).unwrap(),
+			}),
+		}
+	}
+}
+impl From<(&'static str, &'static str)> for ServerError {
+	fn from(value: (&'static str, &'static str)) -> Self {
+		Self::id(value.0, uuid::Uuid::from_str(value.1).unwrap())
 	}
 }
 
@@ -95,6 +148,8 @@ pub struct MisskeyConfig {
 	redis_for_timelines: Option<RedisConfig>,
 	#[serde(rename = "redisForJobQueue")]
 	redis_for_job_queue: Option<RedisConfig>,
+	#[serde(rename = "perUserNotificationsMaxCount")]
+	per_user_notifications_max_count: Option<i32>,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ParsedMisskeyConfig {
@@ -105,6 +160,7 @@ pub struct ParsedMisskeyConfig {
 	remote_proxy: Option<String>,
 	ap_file_base_url: Option<String>,
 	host: String,
+	per_user_notifications_max_count: i32,
 }
 impl From<MisskeyConfig> for ParsedMisskeyConfig {
 	fn from(f: MisskeyConfig) -> Self {
@@ -119,6 +175,7 @@ impl From<MisskeyConfig> for ParsedMisskeyConfig {
 			remote_proxy: f.remote_proxy,
 			ap_file_base_url: f.ap_file_base_url,
 			host,
+			per_user_notifications_max_count: f.per_user_notifications_max_count.unwrap_or(500),
 		}
 	}
 }
@@ -173,6 +230,7 @@ pub struct Context {
 	pub id_service: IdService,
 	pub deliver_service: APDeliverService,
 	pub ap_render_service: ApRenderService,
+	pub notification_service: NotificationService,
 }
 #[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 enum FilterType {
@@ -357,6 +415,15 @@ fn main() {
 			redis_for_timelines,
 			timeline_service.clone(),
 		);
+		let notification_service = NotificationService::new(
+			db.clone(),
+			redis.clone(),
+			parsed_misskey_config.clone(),
+			id_service.clone(),
+			user_service.clone(),
+			event_service.clone(),
+			note_service.clone(),
+		);
 		let client = reqwest::Client::new();
 		let ap_signature_service =
 			APSignatureService::new(db.clone(), client.clone(), parsed_misskey_config.clone());
@@ -384,6 +451,7 @@ fn main() {
 			id_service,
 			deliver_service,
 			ap_render_service,
+			notification_service,
 		};
 		let http_addr: SocketAddr = arg_tup.config.bind_addr.parse().unwrap();
 		let app = api::endpoints::route(&arg_tup);

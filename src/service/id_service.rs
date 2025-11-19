@@ -1,5 +1,6 @@
 mod aid;
 mod aidx;
+mod bigint;
 mod meid;
 mod meidg;
 mod misskey_ulid;
@@ -15,6 +16,7 @@ trait IdServiceImpl: Debug + Send + Sync {
 	fn is_safe_t(&self, t: i64) -> bool;
 	fn gen_id(&self, time: i64) -> String;
 	fn parse(&self, id: &str) -> Option<i64>;
+	fn parse_full(&self, id: &str) -> Option<(i64, num::bigint::BigInt)>;
 }
 impl IdService {
 	pub fn new(config: &MisskeyConfig) -> Self {
@@ -49,5 +51,12 @@ impl IdService {
 	pub fn parse(&self, id: &str) -> Option<chrono::DateTime<chrono::Utc>> {
 		let time = self.0.1.parse(id)?;
 		chrono::DateTime::from_timestamp_millis(time)
+	}
+	pub fn parse_full(
+		&self,
+		id: &str,
+	) -> Option<(chrono::DateTime<chrono::Utc>, num::bigint::BigInt)> {
+		let (time, additional) = self.0.1.parse_full(id)?;
+		Some((chrono::DateTime::from_timestamp_millis(time)?, additional))
 	}
 }

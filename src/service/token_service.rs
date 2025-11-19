@@ -57,12 +57,18 @@ impl TokenPermission {
 	pub async fn load_user(&self, db: &mut DBConnection<'_>) -> Result<Cow<MiUser>, ServerError> {
 		match self {
 			TokenPermission::Token(mi_access_token) => {
-				Ok(MiUser::load_by_id(db, &mi_access_token.user_id)
+				let user = MiUser::load_by_id(db, &mi_access_token.user_id)
 					.await
-					.map(|t| Cow::Owned(t))?)
+					.map(|t| Cow::Owned(t));
+				Ok(ServerError::map_err(
+					user,
+					"b2032734-cd9d-4969-ac69-f6a0cdb7ee00",
+				)?)
 			}
 			TokenPermission::User(mi_user) => Ok(Cow::Borrowed(mi_user)),
-			TokenPermission::None => Err("guest user".into()),
+			TokenPermission::None => {
+				Err(("guest user", "7b2345b2-cf24-4057-873a-63babb249eed").into())
+			}
 		}
 	}
 	pub fn as_user_id(&self) -> Option<&String> {
@@ -75,10 +81,16 @@ impl TokenPermission {
 	pub async fn into_user(self, db: &mut DBConnection<'_>) -> Result<MiUser, ServerError> {
 		match self {
 			TokenPermission::Token(mi_access_token) => {
-				Ok(MiUser::load_by_id(db, &mi_access_token.user_id).await?)
+				let user = MiUser::load_by_id(db, &mi_access_token.user_id).await;
+				Ok(ServerError::map_err(
+					user,
+					"eb91f67c-8c7e-48d0-944a-b5c89a723b87",
+				)?)
 			}
 			TokenPermission::User(mi_user) => Ok(mi_user),
-			TokenPermission::None => Err("guest user".into()),
+			TokenPermission::None => {
+				Err(("guest user", "90ba3a0e-8bdd-47b8-9f16-76c61017d075").into())
+			}
 		}
 	}
 	pub async fn get_policies(&self, role_service: &RoleService) -> RolePolicies {
